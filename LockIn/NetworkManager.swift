@@ -13,6 +13,7 @@ final class NetworkManager: ObservableObject {
         case offline
     }
     
+    private let esp32BaseURL = "http://192.168.1.14"
     /// Secure pre-shared API key to restrict access to authorized clients only
     private var apiKey: String {
         return UserDefaults.standard.string(forKey: "esp32APIKey") ?? "garmo9-syhgAv-mytxun"
@@ -57,11 +58,7 @@ final class NetworkManager: ObservableObject {
     }
 
     private func baseURL() throws -> String {
-        guard let baseURLString = UserDefaults.standard.string(forKey: "esp32BaseURL"),
-              !baseURLString.isEmpty else {
-            throw SyncError(message: "ESP32 address not configured. Set it in Settings.")
-        }
-        return baseURLString
+        return esp32BaseURL
     }
 
     /// Sends current steps and accumulated gym seconds to POST /sync with API Key authentication

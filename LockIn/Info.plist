@@ -4,7 +4,7 @@
 <dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>com.selfrule.tapas.refresh</string>
+		<string>com.selfrule.lockin.refresh</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>

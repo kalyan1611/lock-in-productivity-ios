@@ -105,9 +105,9 @@ final class HealthKitManager: ObservableObject {
             let steps = try await fetchTodaySteps()
             self.todaySteps = steps
             
-            // 1. Fetch gym time from HardcodedGymTracker
-            HardcodedGymTracker.shared.loadTodayAccumulatedTime()
-            let gymSeconds = Int(HardcodedGymTracker.shared.totalSecondsToday)
+            // 1. Fetch gym time from GymTracker
+            GymTracker.shared.loadTodayAccumulatedTime()
+            let gymSeconds = Int(GymTracker.shared.totalSecondsToday)
             
             // 2. Send both metrics to ESP32 /sync
             let result = try await NetworkManager.shared.sendSync(steps: steps, gymSeconds: gymSeconds)

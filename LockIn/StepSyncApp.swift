@@ -5,7 +5,7 @@ import BackgroundTasks
 struct StepSyncApp: App {
     
     // Initialize Tracker at app start
-    @StateObject private var gymTracker = HardcodedGymTracker.shared
+    @StateObject private var gymTracker = GymTracker.shared
 
     init() {
         // Must happen before the app finishes launching, so register here.

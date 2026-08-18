@@ -14,7 +14,7 @@ import BackgroundTasks
 ///   2. Start with your app's bundle identifier prefix
 final class BackgroundTaskManager {
     static let shared = BackgroundTaskManager()
-    static let taskIdentifier = "com.selfrule.tapas.refresh"
+    static let taskIdentifier = "com.selfrule.lockin.refresh"
 
     private init() {}
 
