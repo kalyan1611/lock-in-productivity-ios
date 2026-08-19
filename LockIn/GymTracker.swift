@@ -1,14 +1,12 @@
-import Foundation
-import CoreLocation
 import Combine
+import CoreLocation
+import Foundation
 
 @MainActor
 final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
-    
     static let shared = GymTracker()
     
     // MARK: - Gym Configuration
-    
     
     // flat
     //    private let gymLatitude: CLLocationDegrees = 17.38208
@@ -18,7 +16,7 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let gymLatitude: CLLocationDegrees = 17.38084
     private let gymLongitude: CLLocationDegrees = 78.36276
     
-    private let gymRadiusMeters: CLLocationDistance = 40
+    private let gymRadiusMeters: CLLocationDistance = 50
     
     let targetGymDurationMinutes: Int = 45
     var targetGymDurationSeconds: TimeInterval {
@@ -31,6 +29,9 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     /// True when the latest location check confirms the device is inside the gym radius.
     @Published var isInsideGeofence = false
+    
+    /// Distance to the gym in meters, updated on location fetches.
+    @Published var distanceToGym: CLLocationDistance? = nil
     
     /// True after the user explicitly presses Check In.
     @Published var isCheckedIn = false
@@ -97,7 +98,7 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
     
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    func locationManagerDidChangeAuthorization(_: CLLocationManager) {
         // No background setup required anymore; just leave empty or handle if needed.
     }
     
@@ -105,11 +106,16 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     /// Requests a single fresh location fix. Call this from your pull-to-refresh
     /// action to update `isInsideGeofence` on demand.
+    // MARK: - Manual Location Refresh (Pull-to-Refresh)
+    
+    /// Requests a fast, accurate location fix by briefly starting updates
+    /// and stopping them as soon as a reliable coordinate is received.
     func refreshLocation() {
-        locationManager.requestLocation()
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.startUpdatingLocation()
     }
     
-    // MARK: - Live GPS Location Updates (One-Shot)
+    // MARK: - Live GPS Location Updates
     
     nonisolated func locationManager(
         _ manager: CLLocationManager,
@@ -117,19 +123,21 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     ) {
         guard let latestLocation = locations.last else { return }
         
+        // Stop updating immediately once we get a solid, accurate fix to save battery
+        manager.stopUpdatingLocation()
+        
         Task { @MainActor in
-            let distance = latestLocation.distance(
-                from: CLLocation(latitude: gymLatitude, longitude: gymLongitude)
-            )
+            let distance = latestLocation.distance(from: CLLocation(latitude: gymLatitude, longitude: gymLongitude))
             
-            print("Distance to gym: \(distance)m")
+            print("Accurate distance to gym: \(distance)m (Accuracy: \(latestLocation.horizontalAccuracy)m)")
             
+            self.distanceToGym = distance
             self.isInsideGeofence = (distance <= gymRadiusMeters)
         }
     }
     
     nonisolated func locationManager(
-        _ manager: CLLocationManager,
+        _: CLLocationManager,
         didFailWithError error: Error
     ) {
         print(

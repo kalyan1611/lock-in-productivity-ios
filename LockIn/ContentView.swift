@@ -1,12 +1,11 @@
 import SwiftUI
 
 struct ContentView: View {
-    
     @Environment(\.scenePhase) private var scenePhase
     
     @StateObject private var healthKit = HealthKitManager.shared
     @StateObject private var network = NetworkManager.shared
-    @StateObject private var gymTracker = GymTracker.shared
+    @ObservedObject private var gymTracker = GymTracker.shared
     
     @State private var lastSyncStatus: String = "Pull down to refresh"
     @State private var isSyncing = false
@@ -31,23 +30,17 @@ struct ContentView: View {
     // MARK: - Body
     
     var body: some View {
-        
         NavigationStack {
-            
             Form {
-                
                 // MARK: - 1. Daily Movement Card
                 
                 Section("Daily Movement") {
-                    
                     VStack(
                         alignment: .leading,
                         spacing: 12
                     ) {
-                        
                         // Header Row
                         HStack {
-                            
                             Label(
                                 "Steps Goal",
                                 systemImage: "figure.walk"
@@ -74,7 +67,6 @@ struct ContentView: View {
                         HStack(
                             alignment: .firstTextBaseline
                         ) {
-                            
                             Text("\(healthKit.todaySteps)")
                                 .font(
                                     .system(
@@ -117,12 +109,10 @@ struct ContentView: View {
                         
                         // Secondary Stats
                         HStack {
-                            
                             VStack(
                                 alignment: .leading,
                                 spacing: 2
                             ) {
-                                
                                 Text("EST. DISTANCE")
                                     .font(.caption2)
                                     .fontWeight(.bold)
@@ -151,7 +141,6 @@ struct ContentView: View {
                                 alignment: .leading,
                                 spacing: 2
                             ) {
-                                
                                 Text("EST. BURN")
                                     .font(.caption2)
                                     .fontWeight(.bold)
@@ -175,7 +164,6 @@ struct ContentView: View {
                                 alignment: .trailing,
                                 spacing: 2
                             ) {
-                                
                                 Text("STATUS")
                                     .font(.caption2)
                                     .fontWeight(.bold)
@@ -203,12 +191,10 @@ struct ContentView: View {
                 // MARK: - 2. Gym Attendance Card
                 
                 Section("Gym Attendance") {
-                    
                     VStack(
                         alignment: .leading,
                         spacing: 12
                     ) {
-                        
                         // Header
                         HStack {
                             Label(
@@ -221,10 +207,9 @@ struct ContentView: View {
                             Spacer()
                             
                             if gymTracker.isCheckedIn,
-                               let checkInDate = gymTracker.checkInDate {
-                                
+                               let checkInDate = gymTracker.checkInDate
+                            {
                                 TimelineView(.periodic(from: checkInDate, by: 1)) { context in
-                                    
                                     let elapsed =
                                     context.date.timeIntervalSince(checkInDate)
                                     
@@ -235,7 +220,6 @@ struct ContentView: View {
                                     )
                                     
                                     HStack(spacing: 6) {
-                                        
                                         Image(systemName: "timer")
                                         
                                         Text(
@@ -257,7 +241,6 @@ struct ContentView: View {
                                 }
                                 
                             } else {
-                                
                                 Image(
                                     systemName:
                                         gymTracker.isGateUnlocked
@@ -287,29 +270,30 @@ struct ContentView: View {
                         )
                         
                         // Location / accumulated time
+                        // Location / accumulated time
                         HStack {
-                            
-                            VStack(
-                                alignment: .leading,
-                                spacing: 2
-                            ) {
-                                
-                                Text(
-                                    gymTracker.isInsideGeofence
-                                    ? "Inside Gym 📍"
-                                    : "Outside Gym"
-                                )
-                                .font(.caption)
-                                .foregroundStyle(
-                                    gymTracker.isInsideGeofence
-                                    ? .green
-                                    : .secondary
-                                )
-                                
+                            VStack(alignment: .leading, spacing: 2) {
+                                if gymTracker.isInsideGeofence {
+                                    Text("Inside Gym 📍")
+                                        .font(.caption)
+                                        .foregroundStyle(.green)
+                                } else if let distance = gymTracker.distanceToGym {
+                                    let formattedDistance = distance >= 1000
+                                        ? String(format: "%.1f km away", distance / 1000)
+                                        : String(format: "%.0f m away", distance)
+                                    
+                                    Text("Outside Gym • \(formattedDistance)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text("Outside Gym")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
-                            
+
                             Spacer()
-                            
+
                             Text(
                                 "\(Int(gymTracker.totalSecondsToday / 60))/\(gymTracker.targetGymDurationMinutes) mins"
                             )
@@ -321,18 +305,13 @@ struct ContentView: View {
                         // MARK: Check In / Check Out
                         
                         HStack(spacing: 12) {
-                            
                             // CHECK IN
                             VStack(spacing: 6) {
-                                
                                 Button {
-                                    
                                     gymTracker.checkIn()
                                     
                                 } label: {
-                                    
                                     VStack(spacing: 6) {
-                                        
                                         Image(
                                             systemName:
                                                 "figure.strengthtraining.traditional"
@@ -357,7 +336,6 @@ struct ContentView: View {
                                 )
                                 
                                 if let checkInDate = gymTracker.checkInDate {
-                                    
                                     Text(
                                         "Checked in at " +
                                         checkInDate.formatted(
@@ -369,8 +347,8 @@ struct ContentView: View {
                                     .foregroundStyle(.secondary)
                                     
                                 } else if gymTracker.hasCheckedOutToday,
-                                          let lastCheckInDate = gymTracker.lastCheckInDate {
-                                    
+                                          let lastCheckInDate = gymTracker.lastCheckInDate
+                                {
                                     Text(
                                         "Checked in at " +
                                         lastCheckInDate.formatted(
@@ -382,7 +360,6 @@ struct ContentView: View {
                                     .foregroundStyle(.secondary)
                                     
                                 } else {
-                                    
                                     Text(
                                         gymTracker.isInsideGeofence
                                         ? "Ready to check in"
@@ -396,17 +373,15 @@ struct ContentView: View {
                             
                             // CHECK OUT
                             VStack(spacing: 6) {
-                                
                                 if gymTracker.isCheckedIn,
-                                   let checkInDate = gymTracker.checkInDate {
-                                    
+                                   let checkInDate = gymTracker.checkInDate
+                                {
                                     TimelineView(
                                         .periodic(
                                             from: checkInDate,
                                             by: 1
                                         )
                                     ) { context in
-                                        
                                         let elapsed =
                                         context.date.timeIntervalSince(
                                             checkInDate
@@ -416,13 +391,10 @@ struct ContentView: View {
                                         elapsed >= gymTracker.targetGymDurationSeconds
                                         
                                         Button {
-                                            
                                             gymTracker.checkOut()
                                             
                                         } label: {
-                                            
                                             VStack(spacing: 6) {
-                                                
                                                 Image(
                                                     systemName:
                                                         "figure.walk.departure"
@@ -448,13 +420,11 @@ struct ContentView: View {
                                         .disabled(!canCheckOut)
                                         
                                         if canCheckOut {
-                                            
                                             Text("Ready to check out")
                                                 .font(.caption2)
                                                 .foregroundStyle(.green)
                                             
                                         } else {
-                                            
                                             Text(
                                                 "Available in " +
                                                 timeString(
@@ -472,13 +442,10 @@ struct ContentView: View {
                                     }
                                     
                                 } else if gymTracker.hasCheckedOutToday {
-                                    
                                     Button {
                                         // No-op: already checked out for today
                                     } label: {
-                                        
                                         VStack(spacing: 6) {
-                                            
                                             Image(
                                                 systemName:
                                                     "figure.walk.departure"
@@ -504,7 +471,6 @@ struct ContentView: View {
                                     .disabled(true)
                                     
                                     if let lastCheckOutDate = gymTracker.lastCheckOutDate {
-                                        
                                         Text(
                                             "Checked out at " +
                                             lastCheckOutDate.formatted(
@@ -516,22 +482,17 @@ struct ContentView: View {
                                         .foregroundStyle(.secondary)
                                         
                                     } else {
-                                        
                                         Text("Done for today")
                                             .font(.caption2)
                                             .foregroundStyle(.secondary)
                                     }
                                     
                                 } else {
-                                    
                                     Button {
-                                        
                                         gymTracker.checkOut()
                                         
                                     } label: {
-                                        
                                         VStack(spacing: 6) {
-                                            
                                             Image(
                                                 systemName:
                                                     "figure.walk.departure"
@@ -570,15 +531,11 @@ struct ContentView: View {
                 // MARK: - 3. Hardware Hub
                 
                 Section("Control Hub") {
-                    
                     HStack {
-                        
                         Label {
-                            
                             Text("Lock Controller")
                             
                         } icon: {
-                            
                             Image(systemName: "cpu")
                                 .foregroundStyle(.blue)
                         }
@@ -586,7 +543,6 @@ struct ContentView: View {
                         Spacer()
                         
                         HStack(spacing: 6) {
-                            
                             Circle()
                                 .fill(statusColor)
                                 .frame(
@@ -608,13 +564,10 @@ struct ContentView: View {
                     }
                     
                     HStack {
-                        
                         Label {
-                            
                             Text("Internet Access")
                             
                         } icon: {
-                            
                             Image(
                                 systemName:
                                     network.goalMet == true
@@ -641,13 +594,11 @@ struct ContentView: View {
                     }
                     
                     if !lastSyncStatus.isEmpty {
-                        
                         Text(lastSyncStatus)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                         
                     } else if let lastChecked = network.lastCheckedAt {
-                        
                         HStack {
                             Text("Last Verified")
                             Spacer()
@@ -682,9 +633,7 @@ struct ContentView: View {
     // MARK: - Helpers
     
     private var statusColor: Color {
-        
         switch network.connectionStatus {
-            
         case .online:
             return .green
             
@@ -697,9 +646,7 @@ struct ContentView: View {
     }
     
     private var statusLabel: String {
-        
         switch network.connectionStatus {
-            
         case .online:
             return "Online"
             
@@ -712,14 +659,12 @@ struct ContentView: View {
     }
     
     private var internetStatusLabel: String {
-        
         let stalePrefix =
         network.connectionStatus == .offline
         ? "(last) "
         : ""
         
         switch network.goalMet {
-            
         case .some(true):
             return stalePrefix + "Granted"
             
@@ -752,7 +697,6 @@ struct ContentView: View {
     // MARK: - Sync
     
     private func syncNow() async {
-        
         isSyncing = true
         lastSyncStatus = ""
         
@@ -761,7 +705,6 @@ struct ContentView: View {
         }
         
         do {
-            
             // Refresh location so isInsideGeofence reflects the current position
             gymTracker.refreshLocation()
             

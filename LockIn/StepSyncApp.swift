@@ -1,15 +1,12 @@
 import SwiftUI
-import BackgroundTasks
 
 @main
 struct StepSyncApp: App {
-    
-    // Initialize Tracker at app start
+    /// Initialize Tracker at app start
     @StateObject private var gymTracker = GymTracker.shared
-    
-    init() {
-    }
-    
+
+    init() {}
+
     var body: some Scene {
         WindowGroup {
             ContentView()
