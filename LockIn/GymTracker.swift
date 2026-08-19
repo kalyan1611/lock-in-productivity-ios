@@ -1,7 +1,6 @@
 import Foundation
 import CoreLocation
 import Combine
-import UserNotifications
 
 @MainActor
 final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -10,18 +9,27 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     // MARK: - Gym Configuration
     
+    
+    // flat
+    //    private let gymLatitude: CLLocationDegrees = 17.38208
+    //    private let gymLongitude: CLLocationDegrees = 78.36233
+    
+    // gym
     private let gymLatitude: CLLocationDegrees = 17.38084
     private let gymLongitude: CLLocationDegrees = 78.36276
+    
     private let gymRadiusMeters: CLLocationDistance = 40
     
     let targetGymDurationMinutes: Int = 45
-    var targetGymDurationSeconds: TimeInterval { Double(targetGymDurationMinutes * 60) }
+    var targetGymDurationSeconds: TimeInterval {
+        Double(targetGymDurationMinutes * 60)
+    }
     
     private let minimumRecordedSessionSeconds: TimeInterval = 60
     
     // MARK: - Published State
     
-    /// True when iOS determines the device is inside the gym geofence.
+    /// True when the latest location check confirms the device is inside the gym radius.
     @Published var isInsideGeofence = false
     
     /// True after the user explicitly presses Check In.
@@ -50,7 +58,6 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     // MARK: - Location
     
     private let locationManager = CLLocationManager()
-    private let gymRegionIdentifier = "GymRegion"
     
     // MARK: - Persistence
     
@@ -74,85 +81,36 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     override init() {
         super.init()
-        
         locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
         
         restoreActiveSession()
         checkDailyCheckoutStatus()
-        requestNotificationPermission()
         loadTodayAccumulatedTime()
     }
     
     // MARK: - Location Permission
     
     func requestLocationPermissionIfNeeded() {
-        switch locationManager.authorizationStatus {
-        case .notDetermined:
+        if locationManager.authorizationStatus == .notDetermined {
             locationManager.requestWhenInUseAuthorization()
-        case .authorizedWhenInUse:
-            locationManager.requestAlwaysAuthorization()
-        case .authorizedAlways:
-            setupGeofence()
-        case .denied, .restricted:
-            break
-        @unknown default:
-            break
         }
     }
-    
-    // MARK: - Authorization Callback
     
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        switch manager.authorizationStatus {
-        case .notDetermined:
-            break
-        case .authorizedWhenInUse:
-            manager.requestAlwaysAuthorization()
-        case .authorizedAlways:
-            setupGeofence()
-        case .denied, .restricted:
-            break
-        @unknown default:
-            break
-        }
+        // No background setup required anymore; just leave empty or handle if needed.
     }
     
-    // MARK: - Geofence & Location Streaming
-    private func setupGeofence() {
-        for region in locationManager.monitoredRegions {
-            if region.identifier == gymRegionIdentifier {
-                locationManager.stopMonitoring(for: region)
-            }
-        }
-        
-        let region = CLCircularRegion(
-            center: gymCoordinate,
-            radius: gymRadiusMeters,
-            identifier: gymRegionIdentifier
-        )
-        
-        region.notifyOnEntry = true
-        region.notifyOnExit = true
-        
-        locationManager.startMonitoring(for: region)
-        
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        
-        // Get an initial fix; after this, location only updates via
-        // background region monitoring or a manual refreshLocation() call.
-        locationManager.requestLocation()
-    }
+    // MARK: - Manual Location Refresh (Pull-to-Refresh)
     
-    // MARK: - Manual Location Refresh (e.g. pull-to-refresh)
-    
-    /// Requests a single fresh location fix. Call this from a user-initiated
-    /// action (like pull-to-refresh) instead of polling continuously, to
-    /// keep `isInsideGeofence` accurate without ongoing GPS/battery cost.
+    /// Requests a single fresh location fix. Call this from your pull-to-refresh
+    /// action to update `isInsideGeofence` on demand.
     func refreshLocation() {
         locationManager.requestLocation()
     }
     
-    // MARK: - Live GPS Location Updates
+    // MARK: - Live GPS Location Updates (One-Shot)
+    
     nonisolated func locationManager(
         _ manager: CLLocationManager,
         didUpdateLocations locations: [CLLocation]
@@ -160,88 +118,31 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         guard let latestLocation = locations.last else { return }
         
         Task { @MainActor in
-            let distance = latestLocation.distance(from: CLLocation(latitude: gymLatitude, longitude: gymLongitude))
+            let distance = latestLocation.distance(
+                from: CLLocation(latitude: gymLatitude, longitude: gymLongitude)
+            )
             
             print("Distance to gym: \(distance)m")
             
-            if distance <= gymRadiusMeters {
-                self.isInsideGeofence = true
-            } else {
-                self.isInsideGeofence = false
-            }
+            self.isInsideGeofence = (distance <= gymRadiusMeters)
         }
     }
-    
-    // MARK: - Notification Permission
-    
-    private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
-    }
-    
-    // MARK: - Geofence Entry
     
     nonisolated func locationManager(
         _ manager: CLLocationManager,
-        didEnterRegion region: CLRegion
+        didFailWithError error: Error
     ) {
-        guard region.identifier == "GymRegion" else { return }
-        
-        Task { @MainActor in
-            self.isInsideGeofence = true
-            
-            guard !self.isCheckedIn && !self.hasCheckedOutToday else { return }
-            
-            let content = UNMutableNotificationContent()
-            content.title = "Arrived at the Gym! 🏋️‍♂️"
-            content.body = "You're inside the gym zone. Don't forget to check in!"
-            content.sound = .default
-            
-            let request = UNNotificationRequest(
-                identifier: UUID().uuidString,
-                content: content,
-                trigger: nil
-            )
-            
-            try? await UNUserNotificationCenter.current().add(request)
-        }
+        print(
+            "Location manager failed with error: \(error.localizedDescription)"
+        )
     }
-    
-    // MARK: - Geofence Exit
-    
-    nonisolated func locationManager(
-        _ manager: CLLocationManager,
-        didExitRegion region: CLRegion
-    ) {
-        guard region.identifier == "GymRegion" else { return }
-        
-        Task { @MainActor in
-            self.isInsideGeofence = false
-            
-            guard self.isCheckedIn else { return }
-            
-            let content = UNMutableNotificationContent()
-            content.title = "Left the Gym 🚶‍♂️"
-            content.body = "You've left the gym zone. Don't forget to check out if your session is complete!"
-            content.sound = .default
-            
-            let request = UNNotificationRequest(
-                identifier: UUID().uuidString,
-                content: content,
-                trigger: nil
-            )
-            
-            try? await UNUserNotificationCenter.current().add(request)
-        }
-    }
-    
-    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
     
     // MARK: - Manual Check In
     
     func checkIn() {
         guard isInsideGeofence else { return }
         guard !isCheckedIn else { return }
-        guard !hasCheckedOutToday else { return } // Prevent check-in if already done today
+        guard !hasCheckedOutToday else { return }
         
         let now = Date()
         
@@ -281,10 +182,7 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         hasCheckedOutToday = true
         lastCheckOutDate = now
         
-        // Save checkout date string so it unlocks again tomorrow
         userDefaults.set(todayDateString(), forKey: lastCheckOutDateKey)
-        
-        // Persist the checkout time so it can still be displayed today
         userDefaults.set(now.timeIntervalSince1970, forKey: lastCheckOutTimeKey)
     }
     
@@ -313,10 +211,8 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         let today = todayDateString()
         
         if lastCheckoutDate == today {
-            // Already checked out today, lock out buttons until tomorrow
             hasCheckedOutToday = true
         } else {
-            // It's a new day, reset checkout status and clear yesterday's times
             hasCheckedOutToday = false
             userDefaults.removeObject(forKey: lastCheckOutDateKey)
             userDefaults.removeObject(forKey: lastCheckInTimeKey)
