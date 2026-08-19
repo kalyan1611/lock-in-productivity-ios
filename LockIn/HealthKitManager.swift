@@ -13,17 +13,17 @@ enum HealthKitError: Error, LocalizedError {
 
 final class HealthKitManager: ObservableObject {
     static let shared = HealthKitManager()
-
+    
     private let healthStore = HKHealthStore()
     private let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
     private var observerQuery: HKObserverQuery?
-
+    
     @Published var todaySteps: Int = 0
     @Published var targetSteps: Int = 10000
     @Published var authorizationStatus: HKAuthorizationStatus = .notDetermined
-
+    
     private init() {}
-
+    
     /// Ask the user for read-only access to step count. We never write
     /// anything back to Health, so `toShare` is empty.
     func requestAuthorization() async throws {
@@ -36,7 +36,7 @@ final class HealthKitManager: ObservableObject {
             self.authorizationStatus = status
         }
     }
-
+    
     /// Cumulative step count from local midnight to now, using the
     /// device's current calendar/timezone — matches the bucketing logic
     /// from the earlier Shortcuts version. Doesn't touch @Published state,
@@ -48,7 +48,7 @@ final class HealthKitManager: ObservableObject {
         let predicate = HKQuery.predicateForSamples(
             withStart: startOfDay, end: now, options: .strictStartDate
         )
-
+        
         return try await withCheckedThrowingContinuation { continuation in
             let query = HKStatisticsQuery(
                 quantityType: stepType,
@@ -65,7 +65,7 @@ final class HealthKitManager: ObservableObject {
             healthStore.execute(query)
         }
     }
-
+    
     /// Registers for background delivery so iOS wakes the app (subject to
     /// its own scheduling — not instant/guaranteed) whenever new step
     /// samples land in Health, and pushes an observer query that syncs
@@ -78,7 +78,7 @@ final class HealthKitManager: ObservableObject {
                 print("enableBackgroundDelivery success: \(success)")
             }
         }
-
+        
         let query = HKObserverQuery(sampleType: stepType, predicate: nil) { [weak self] _, completionHandler, error in
             guard error == nil else {
                 print("Observer query error: \(error!)")
@@ -93,7 +93,7 @@ final class HealthKitManager: ObservableObject {
         observerQuery = query
         healthStore.execute(query)
     }
-
+    
     /// Fetch the latest step count and push it to the ESP32. Marked
     /// @MainActor since it's the one place that writes to the @Published
     /// todaySteps property — safe to call from background contexts

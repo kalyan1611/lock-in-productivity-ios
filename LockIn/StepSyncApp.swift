@@ -6,10 +6,10 @@ struct StepSyncApp: App {
     
     // Initialize Tracker at app start
     @StateObject private var gymTracker = GymTracker.shared
-
+    
     init() {
     }
-
+    
     var body: some Scene {
         WindowGroup {
             ContentView()

@@ -14,7 +14,8 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let gymLongitude: CLLocationDegrees = 78.36276
     private let gymRadiusMeters: CLLocationDistance = 40
     
-    private let requiredDurationSeconds: TimeInterval = 45 * 60
+    let targetGymDurationMinutes: Int = 45
+    var targetGymDurationSeconds: TimeInterval {Double(targetGymDurationMinutes * 60)}
     
     private let minimumRecordedSessionSeconds: TimeInterval = 60
     
@@ -310,7 +311,7 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         
         let elapsed = Date().timeIntervalSince(checkInDate)
         
-        guard elapsed >= requiredDurationSeconds else {
+        guard elapsed >= targetGymDurationSeconds else {
             return
         }
         
@@ -415,7 +416,7 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         storedSeconds + activeSession
         
         isGateUnlocked =
-        totalSecondsToday >= requiredDurationSeconds
+        totalSecondsToday >= targetGymDurationSeconds
     }
     
     // MARK: - Save Today's Time
@@ -434,7 +435,7 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         totalSecondsToday = seconds
         
         isGateUnlocked =
-        seconds >= requiredDurationSeconds
+        seconds >= targetGymDurationSeconds
     }
     
     // MARK: - Date

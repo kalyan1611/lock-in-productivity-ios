@@ -230,7 +230,7 @@ struct ContentView: View {
                                     
                                     let remaining =
                                     max(
-                                        (45 * 60) - elapsed,
+                                        gymTracker.targetGymDurationSeconds - elapsed,
                                         0
                                     )
                                     
@@ -241,7 +241,7 @@ struct ContentView: View {
                                         Text(
                                             remaining > 0
                                             ? timeString(from: remaining)
-                                            : "45:00"
+                                            : "\(gymTracker.targetGymDurationMinutes):00"
                                         )
                                         .monospacedDigit()
                                         .fontWeight(.bold)
@@ -276,7 +276,7 @@ struct ContentView: View {
                         ProgressView(
                             value: min(
                                 gymTracker.totalSecondsToday /
-                                (45 * 60),
+                                gymTracker.targetGymDurationSeconds,
                                 1.0
                             )
                         )
@@ -311,7 +311,7 @@ struct ContentView: View {
                             Spacer()
                             
                             Text(
-                                "\(Int(gymTracker.totalSecondsToday / 60))/45 mins"
+                                "\(Int(gymTracker.totalSecondsToday / 60))/\(gymTracker.targetGymDurationMinutes) mins"
                             )
                             .font(.caption)
                             .bold()
@@ -399,7 +399,7 @@ struct ContentView: View {
                                         )
                                         
                                         let canCheckOut =
-                                        elapsed >= (45 * 60)
+                                        elapsed >= gymTracker.targetGymDurationSeconds
                                         
                                         Button {
                                             
@@ -446,7 +446,7 @@ struct ContentView: View {
                                                 timeString(
                                                     from:
                                                         max(
-                                                            (45 * 60) - elapsed,
+                                                            gymTracker.targetGymDurationSeconds - elapsed,
                                                             0
                                                         )
                                                 )
@@ -580,7 +580,7 @@ struct ContentView: View {
                         Text(lastSyncStatus)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
-                            
+                        
                     } else if let lastChecked = network.lastCheckedAt {
                         
                         HStack {

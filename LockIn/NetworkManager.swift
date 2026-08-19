@@ -6,7 +6,7 @@ import Combine
 final class NetworkManager: ObservableObject {
     static let shared = NetworkManager()
     private init() {}
-
+    
     enum ConnectionStatus {
         case unknown
         case online
@@ -18,7 +18,7 @@ final class NetworkManager: ObservableObject {
     private var apiKey: String {
         return UserDefaults.standard.string(forKey: "esp32APIKey") ?? "garmo9-syhgAv-mytxun"
     }
-
+    
     @Published var connectionStatus: ConnectionStatus = .unknown
     @Published var lastCheckedAt: Date?
     
@@ -28,12 +28,12 @@ final class NetworkManager: ObservableObject {
     /// Individual gate statuses
     @Published var stepGoalMet: Bool?
     @Published var gymGoalMet: Bool?
-
+    
     struct SyncError: Error, LocalizedError {
         let message: String
         var errorDescription: String? { message }
     }
-
+    
     struct SyncResult: Decodable {
         let status: String
         let steps: Int
@@ -43,7 +43,7 @@ final class NetworkManager: ObservableObject {
         let goalMet: Bool
         let fullInternetUnlocked: Bool
     }
-
+    
     struct StatusResult: Decodable {
         let today: String
         let steps: Int
@@ -56,11 +56,11 @@ final class NetworkManager: ObservableObject {
         let withinAllowedHours: Bool
         let fullInternetUnlocked: Bool
     }
-
+    
     private func baseURL() throws -> String {
         return esp32BaseURL
     }
-
+    
     /// Sends current steps and accumulated gym seconds to POST /sync with API Key authentication
     @discardableResult
     @MainActor
@@ -69,7 +69,7 @@ final class NetworkManager: ObservableObject {
         guard let url = URL(string: base + "/sync") else {
             throw SyncError(message: "Invalid ESP32 address")
         }
-
+        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -84,7 +84,7 @@ final class NetworkManager: ObservableObject {
             "gymSeconds": gymSeconds
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-
+        
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
@@ -118,7 +118,7 @@ final class NetworkManager: ObservableObject {
             throw error
         }
     }
-
+    
     /// Lightweight ping check against GET /status with API Key authentication
     @MainActor
     func checkStatus() async {
@@ -137,7 +137,7 @@ final class NetworkManager: ObservableObject {
             request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
             
             request.timeoutInterval = 3
-
+            
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
                   (200...299).contains(httpResponse.statusCode) else {
