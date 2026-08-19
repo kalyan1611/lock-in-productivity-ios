@@ -24,8 +24,7 @@ final class HealthKitManager: ObservableObject {
 
     private init() {}
 
-    /// Ask the user for read-only access to step count. We never write
-    /// anything back to Health, so `toShare` is empty.
+    /// Ask the user for read-only access to step count.
     func requestAuthorization() async throws {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw HealthKitError.notAvailable
@@ -37,10 +36,8 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
-    /// Cumulative step count from local midnight to now, using the
-    /// device's current calendar/timezone — matches the bucketing logic
-    /// from the earlier Shortcuts version. Doesn't touch @Published state,
-    /// so no actor isolation needed here.
+    /// Cumulative step count from local midnight to now.
+    /// Gracefully returns 0 if no step samples exist yet for today.
     func fetchTodaySteps() async throws -> Int {
         let calendar = Calendar.current
         let now = Date()
@@ -56,9 +53,16 @@ final class HealthKitManager: ObservableObject {
                 options: .cumulativeSum
             ) { _, result, error in
                 if let error = error {
+                    let nsError = error as NSError
+                    // Handle "No data available for the specified predicate" (HKError.errorNoData)
+                    if nsError.domain == HKErrorDomain && nsError.code == HKError.errorNoData.rawValue {
+                        continuation.resume(returning: 0)
+                        return
+                    }
                     continuation.resume(throwing: error)
                     return
                 }
+                
                 let sum = result?.sumQuantity()?.doubleValue(for: .count()) ?? 0
                 continuation.resume(returning: Int(sum))
             }
@@ -66,10 +70,7 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
-    /// Registers for background delivery so iOS wakes the app (subject to
-    /// its own scheduling — not instant/guaranteed) whenever new step
-    /// samples land in Health, and pushes an observer query that syncs
-    /// automatically when that happens.
+    /// Registers for background delivery and syncs when steps update.
     func enableBackgroundDelivery() {
         healthStore.enableBackgroundDelivery(for: stepType, frequency: .immediate) { success, error in
             if let error = error {
@@ -86,7 +87,7 @@ final class HealthKitManager: ObservableObject {
                 return
             }
             Task {
-                await self?.syncWithESP32()
+                await self?.syncSteps()
                 completionHandler()
             }
         }
@@ -94,24 +95,12 @@ final class HealthKitManager: ObservableObject {
         healthStore.execute(query)
     }
 
-    /// Fetch the latest step count and push it to the ESP32. Marked
-    /// @MainActor since it's the one place that writes to the @Published
-    /// todaySteps property — safe to call from background contexts
-    /// (observer callback, BGAppRefreshTask) or a UI button either way,
-    /// Swift will hop to the main actor automatically when awaited.
+    /// Fetch latest step count and push all metrics to ESP32.
     @MainActor
-    func syncWithESP32() async {
+    func syncSteps() async {
         do {
             let steps = try await fetchTodaySteps()
             todaySteps = steps
-
-            // 1. Fetch gym time from GymTracker
-            GymTracker.shared.loadTodayAccumulatedTime()
-            let gymSeconds = Int(GymTracker.shared.totalSecondsToday)
-
-            // 2. Send both metrics to ESP32 /sync
-            let result = try await NetworkManager.shared.sendSync(steps: steps, gymSeconds: gymSeconds)
-            print("Synced with ESP32! Goal met: \(result.goalMet)")
         } catch {
             print("Sync failed: \(error.localizedDescription)")
         }

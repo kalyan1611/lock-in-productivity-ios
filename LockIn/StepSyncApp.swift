@@ -14,7 +14,8 @@ struct StepSyncApp: App {
                     do {
                         try await HealthKitManager.shared.requestAuthorization()
                         HealthKitManager.shared.enableBackgroundDelivery()
-                        await HealthKitManager.shared.syncWithESP32()
+                        await HealthKitManager.shared.syncSteps()
+                        await NetworkManager.shared.checkStatus()
                     } catch {
                         print("Startup error: \(error)")
                     }

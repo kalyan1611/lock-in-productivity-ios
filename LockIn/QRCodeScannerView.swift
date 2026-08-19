@@ -27,7 +27,6 @@ class QRScannerController: UIViewController, AVCaptureMetadataOutputObjectsDeleg
     private let guideBoxView = UIView()
     private let titleLabel = UILabel()
     private let errorFeedbackLabel = UILabel()
-    private let cancelButton = UIButton(type: .system)
     private let torchButton = UIButton(type: .system)
     
     private var isProcessing = false
@@ -103,14 +102,6 @@ class QRScannerController: UIViewController, AVCaptureMetadataOutputObjectsDeleg
         errorFeedbackLabel.alpha = 0 // Hidden by default
         view.addSubview(errorFeedbackLabel)
         
-        cancelButton.translatesAutoresizingMaskIntoConstraints = false
-        cancelButton.setTitle("Cancel", for: .normal)
-        cancelButton.setTitleColor(.white, for: .normal)
-        cancelButton.backgroundColor = UIColor.darkGray.withAlphaComponent(0.7)
-        cancelButton.layer.cornerRadius = 22
-        cancelButton.addTarget(self, action: #selector(dismissScanner), for: .touchUpInside)
-        view.addSubview(cancelButton)
-        
         torchButton.translatesAutoresizingMaskIntoConstraints = false
         torchButton.setImage(UIImage(systemName: "flashlight.off.fill"), for: .normal)
         torchButton.tintColor = .white
@@ -136,20 +127,11 @@ class QRScannerController: UIViewController, AVCaptureMetadataOutputObjectsDeleg
             errorFeedbackLabel.topAnchor.constraint(equalTo: guideBoxView.bottomAnchor, constant: 16),
             errorFeedbackLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             
-            cancelButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 32),
-            cancelButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
-            cancelButton.widthAnchor.constraint(equalToConstant: 120),
-            cancelButton.heightAnchor.constraint(equalToConstant: 44),
-            
-            torchButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
+            torchButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             torchButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
             torchButton.widthAnchor.constraint(equalToConstant: 44),
             torchButton.heightAnchor.constraint(equalToConstant: 44)
         ])
-    }
-    
-    @objc private func dismissScanner() {
-        dismiss(animated: true)
     }
     
     @objc private func toggleTorch() {
@@ -193,7 +175,7 @@ class QRScannerController: UIViewController, AVCaptureMetadataOutputObjectsDeleg
                         self?.errorFeedbackLabel.alpha = 1
                         self?.guideBoxView.layer.borderColor = UIColor.systemRed.cgColor
                     }) { _ in
-                        // Reset warning state after 1.5 seconds and allow scanning again
+                        // Reset warning state after 1.2 seconds and allow scanning again
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
                             UIView.animate(withDuration: 0.2) {
                                 self?.errorFeedbackLabel.alpha = 0

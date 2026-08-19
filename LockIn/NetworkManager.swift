@@ -1,7 +1,7 @@
 import Combine
 import Foundation
 
-/// Sends step counts and gym duration to the ESP32 over the local network,
+/// Sends step counts, gym duration, and LeetCode problem solves to the ESP32 over the local network,
 /// and tracks reachability and gate status.
 final class NetworkManager: ObservableObject {
     static let shared = NetworkManager()
@@ -28,6 +28,7 @@ final class NetworkManager: ObservableObject {
     /// Individual gate statuses
     @Published var stepGoalMet: Bool?
     @Published var gymGoalMet: Bool?
+    @Published var leetCodeGoalMet: Bool?
 
     struct SyncError: Error, LocalizedError {
         let message: String
@@ -40,8 +41,10 @@ final class NetworkManager: ObservableObject {
         let status: String
         let steps: Int
         let gymSeconds: Int
+        let leetCodeSolved: Int?
         let stepGoalMet: Bool
         let gymGoalMet: Bool
+        let leetCodeGoalMet: Bool?
         let goalMet: Bool
         let fullInternetUnlocked: Bool
     }
@@ -52,8 +55,11 @@ final class NetworkManager: ObservableObject {
         let stepGoal: Int
         let gymSeconds: Int
         let gymGoalSeconds: Int
+        let leetCodeSolved: Int?
+        let leetCodeGoal: Int?
         let stepGoalMet: Bool
         let gymGoalMet: Bool
+        let leetCodeGoalMet: Bool?
         let overallGoalMet: Bool
         let withinAllowedHours: Bool
         let fullInternetUnlocked: Bool
@@ -63,10 +69,10 @@ final class NetworkManager: ObservableObject {
         return esp32BaseURL
     }
 
-    /// Sends current steps and accumulated gym seconds to POST /sync with API Key authentication
+    /// Sends current steps, accumulated gym seconds, and solved LeetCode problems to POST /sync
     @discardableResult
     @MainActor
-    func sendSync(steps: Int, gymSeconds: Int) async throws -> SyncResult {
+    func sendSync(steps: Int, gymSeconds: Int, leetCodeSolved: Int) async throws -> SyncResult {
         let base = try baseURL()
         guard let url = URL(string: base + "/sync") else {
             throw SyncError(message: "Invalid ESP32 address")
@@ -84,6 +90,7 @@ final class NetworkManager: ObservableObject {
         let payload: [String: Int] = [
             "steps": steps,
             "gymSeconds": gymSeconds,
+            "leetCodeSolved": leetCodeSolved
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
@@ -112,6 +119,7 @@ final class NetworkManager: ObservableObject {
             goalMet = result.goalMet
             stepGoalMet = result.stepGoalMet
             gymGoalMet = result.gymGoalMet
+            leetCodeGoalMet = result.leetCodeGoalMet
 
             return result
         } catch {
@@ -154,6 +162,7 @@ final class NetworkManager: ObservableObject {
                 goalMet = decoded.overallGoalMet
                 stepGoalMet = decoded.stepGoalMet
                 gymGoalMet = decoded.gymGoalMet
+                leetCodeGoalMet = decoded.leetCodeGoalMet
             }
         } catch {
             connectionStatus = .offline
