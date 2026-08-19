@@ -16,7 +16,6 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     
     // MARK: - Published State
     
-    @Published var distanceFromGymMeters: Double?
     @Published var totalSecondsToday: TimeInterval = 0
     @Published var isGateUnlocked = false
     @Published var isCurrentlyAtGym = false
@@ -55,10 +54,6 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     // MARK: - Location Permission
     
     func requestLocationPermissionIfNeeded() {
-        
-        guard CLLocationManager.locationServicesEnabled() else {
-            return
-        }
         
         switch locationManager.authorizationStatus {
             
@@ -148,72 +143,6 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         region.notifyOnExit = true
         
         locationManager.startMonitoring(for: region)
-    }
-    
-    // MARK: - Foreground Location Updates
-    
-    /// Starts continuous location updates only while
-    /// the app is visible.
-    func startForegroundLocationUpdates() {
-        
-        guard CLLocationManager.locationServicesEnabled() else {
-            return
-        }
-        
-        switch locationManager.authorizationStatus {
-            
-        case .authorizedAlways,
-                .authorizedWhenInUse:
-            
-            locationManager.desiredAccuracy =
-            kCLLocationAccuracyBest
-            
-            locationManager.distanceFilter = 5
-            
-            locationManager.startUpdatingLocation()
-            
-        default:
-            
-            break
-        }
-    }
-    
-    /// Stops continuous GPS updates when the app
-    /// leaves the foreground.
-    ///
-    /// Geofencing continues to work.
-    func stopForegroundLocationUpdates() {
-        
-        locationManager.stopUpdatingLocation()
-    }
-    
-    // MARK: - Live Location Updates
-    
-    nonisolated func locationManager(
-        _ manager: CLLocationManager,
-        didUpdateLocations locations: [CLLocation]
-    ) {
-        
-        guard let location = locations.last else {
-            return
-        }
-        
-        let gymLocation = CLLocation(
-            latitude: gymLatitude,
-            longitude: gymLongitude
-        )
-        
-        let distance = location.distance(
-            from: gymLocation
-        )
-        
-        Task { @MainActor in
-            
-            self.distanceFromGymMeters = distance
-            
-            self.isCurrentlyAtGym =
-            distance <= self.gymRadiusMeters
-        }
     }
     
     // MARK: - Geofence Entry

@@ -264,7 +264,7 @@ struct ContentView: View {
                                 
                                 Text(
                                     gymTracker.isCurrentlyAtGym
-                                    ? "Zone Verified 📍"
+                                    ? "At Gym📍"
                                     : "Out of Range"
                                 )
                                 .font(.caption)
@@ -273,27 +273,6 @@ struct ContentView: View {
                                     ? .green
                                     : .secondary
                                 )
-                                
-                                // Live Distance
-                                if let distance =
-                                    gymTracker.distanceFromGymMeters {
-                                    
-                                    Text(
-                                        distance >= 1000
-                                        ? String(
-                                            format:
-                                                "Distance: %.2f km",
-                                            distance / 1000
-                                        )
-                                        : String(
-                                            format:
-                                                "Distance: %.0f m",
-                                            distance
-                                        )
-                                    )
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                }
                             }
                             
                             Spacer()
@@ -458,27 +437,9 @@ struct ContentView: View {
                 await syncNow()
             }
         }
-        
-        // MARK: - Foreground / Background Location
-        
+                
         .onAppear {
             gymTracker.requestLocationPermissionIfNeeded()
-            gymTracker.startForegroundLocationUpdates()
-        }
-        
-        .onChange(of: scenePhase) { _, newPhase in
-            
-            switch newPhase {
-                
-            case .active:
-                gymTracker.startForegroundLocationUpdates()
-                
-            case .inactive, .background:
-                gymTracker.stopForegroundLocationUpdates()
-                
-            @unknown default:
-                break
-            }
         }
     }
     
