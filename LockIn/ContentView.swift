@@ -302,6 +302,7 @@ struct ContentView: View {
                 }
             }
             .listSectionSpacing(.compact)
+            .scrollIndicators(.hidden)
             .safeAreaPadding(.bottom, 16)
             .navigationTitle("LockIn")
             .navigationBarTitleDisplayMode(.inline)
@@ -331,7 +332,6 @@ struct ContentView: View {
             TimelineView(.periodic(from: checkInDate, by: 1)) { context in
                 let elapsed = context.date.timeIntervalSince(checkInDate)
                 let canCheckOut = elapsed >= gymTracker.targetGymDurationSeconds
-                let remaining = max(gymTracker.targetGymDurationSeconds - elapsed, 0)
                 
                 VStack(spacing: 4) {
                     Button {
@@ -351,9 +351,8 @@ struct ContentView: View {
                     .tint(canCheckOut ? .red : .gray)
                     .disabled(!canCheckOut)
                     
-                    Text(canCheckOut ? "Target reached • Ready to check out" : "Unlocks in \(timeString(from: remaining))")
+                    Text(canCheckOut ? "Target reached • Ready to check out" : "Minimum duration required")
                         .font(.caption2)
-                        .monospacedDigit()
                         .foregroundStyle(canCheckOut ? .green : .secondary)
                 }
             }
