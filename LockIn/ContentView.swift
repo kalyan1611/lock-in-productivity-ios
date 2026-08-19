@@ -417,7 +417,7 @@ struct ContentView: View {
                                         }
                                         .buttonStyle(.borderedProminent)
                                         .tint(.red)
-                                        .disabled(!canCheckOut)
+                                        .disabled(!canCheckOut || !gymTracker.isInsideGeofence)
                                         
                                         if canCheckOut {
                                             Text("Ready to check out")

@@ -11,10 +11,10 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     // flat
     //    private let gymLatitude: CLLocationDegrees = 17.38208
     //    private let gymLongitude: CLLocationDegrees = 78.36233
-    
+
     // gym
-    private let gymLatitude: CLLocationDegrees = 17.38084
-    private let gymLongitude: CLLocationDegrees = 78.36276
+    private let gymLatitude: CLLocationDegrees = 17.38099
+    private let gymLongitude: CLLocationDegrees = 78.36278
     
     private let gymRadiusMeters: CLLocationDistance = 50
     
