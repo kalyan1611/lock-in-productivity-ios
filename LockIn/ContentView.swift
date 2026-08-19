@@ -762,6 +762,9 @@ struct ContentView: View {
         
         do {
             
+            // Refresh location so isInsideGeofence reflects the current position
+            gymTracker.refreshLocation()
+            
             // Fetch today's HealthKit steps
             let steps =
             try await healthKit.fetchTodaySteps()

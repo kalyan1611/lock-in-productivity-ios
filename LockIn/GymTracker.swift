@@ -76,7 +76,6 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         super.init()
         
         locationManager.delegate = self
-        locationManager.showsBackgroundLocationIndicator = false
         
         restoreActiveSession()
         checkDailyCheckoutStatus()
@@ -138,9 +137,19 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         locationManager.startMonitoring(for: region)
         
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.startUpdatingLocation()
         
-        locationManager.requestState(for: region)
+        // Get an initial fix; after this, location only updates via
+        // background region monitoring or a manual refreshLocation() call.
+        locationManager.requestLocation()
+    }
+    
+    // MARK: - Manual Location Refresh (e.g. pull-to-refresh)
+    
+    /// Requests a single fresh location fix. Call this from a user-initiated
+    /// action (like pull-to-refresh) instead of polling continuously, to
+    /// keep `isInsideGeofence` accurate without ongoing GPS/battery cost.
+    func refreshLocation() {
+        locationManager.requestLocation()
     }
     
     // MARK: - Live GPS Location Updates
@@ -222,29 +231,6 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
             )
             
             try? await UNUserNotificationCenter.current().add(request)
-        }
-    }
-    
-    // MARK: - Current Geofence State
-    
-    nonisolated func locationManager(
-        _ manager: CLLocationManager,
-        didDetermineState state: CLRegionState,
-        for region: CLRegion
-    ) {
-        guard region.identifier == "GymRegion" else { return }
-        
-        Task { @MainActor in
-            switch state {
-            case .inside:
-                self.isInsideGeofence = true
-            case .outside:
-                self.isInsideGeofence = false
-            case .unknown:
-                break
-            @unknown default:
-                break
-            }
         }
     }
     
