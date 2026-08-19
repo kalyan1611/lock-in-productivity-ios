@@ -196,13 +196,6 @@ struct ContentView: View {
                             }
                         }
                         .padding(.top, 4)
-                        
-                        if !lastSyncStatus.isEmpty {
-                            
-                            Text(lastSyncStatus)
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
                     }
                     .padding(.vertical, 4)
                 }
@@ -436,7 +429,7 @@ struct ContentView: View {
                                             )
                                             .frame(height: 65)
                                         }
-                                        .buttonStyle(.bordered)
+                                        .buttonStyle(.borderedProminent)
                                         .tint(.red)
                                         .disabled(!canCheckOut)
                                         
@@ -494,7 +487,7 @@ struct ContentView: View {
                                         )
                                         .frame(height: 65)
                                     }
-                                    .buttonStyle(.bordered)
+                                    .buttonStyle(.borderedProminent)
                                     .tint(.red)
                                     .disabled(true)
                                     
@@ -582,15 +575,17 @@ struct ContentView: View {
                             )
                     }
                     
-                    if let lastChecked =
-                        network.lastCheckedAt {
+                    if !lastSyncStatus.isEmpty {
+                        
+                        Text(lastSyncStatus)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            
+                    } else if let lastChecked = network.lastCheckedAt {
                         
                         HStack {
-                            
                             Text("Last Verified")
-                            
                             Spacer()
-                            
                             Text(
                                 lastChecked.formatted(
                                     date: .omitted,
@@ -694,6 +689,7 @@ struct ContentView: View {
     private func syncNow() async {
         
         isSyncing = true
+        lastSyncStatus = ""
         
         defer {
             isSyncing = false
@@ -714,22 +710,12 @@ struct ContentView: View {
             Int(gymTracker.totalSecondsToday)
             
             // Send everything to ESP32
-            let result =
             try await NetworkManager.shared.sendSync(
                 steps: steps,
                 gymSeconds: gymSeconds
             )
             
-            let goalText =
-            result.goalMet
-            ? "Access Granted ✅"
-            : "Access Restricted 🔒"
-            
-            lastSyncStatus =
-            "Updated \(Date().formatted(date: .omitted, time: .shortened)) — \(goalText)"
-            
         } catch {
-            
             lastSyncStatus =
             "Sync failed: \(error.localizedDescription)"
         }
