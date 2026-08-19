@@ -189,7 +189,6 @@ class QRScannerController: UIViewController, AVCaptureMetadataOutputObjectsDeleg
         if let metadataObject = metadataObjects.first {
             guard let readableObject = metadataObject as? AVMetadataMachineReadableCodeObject,
                   let stringValue = readableObject.stringValue else { return }
-            print(stringValue)
             if stringValue.contains(expectedCode) {
                 // Successful Match
                 isProcessing = true
