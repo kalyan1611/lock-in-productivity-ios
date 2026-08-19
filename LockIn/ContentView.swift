@@ -240,7 +240,7 @@ struct ContentView: View {
                         .tint(
                             gymTracker.isGateUnlocked
                             ? .green
-                            : .orange
+                            : .blue
                         )
                         
                         // Location / accumulated time
@@ -545,7 +545,7 @@ struct ContentView: View {
                             .foregroundStyle(
                                 network.goalMet == true
                                 ? .green
-                                : .secondary
+                                : .red
                             )
                     }
                     
