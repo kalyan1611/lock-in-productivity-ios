@@ -9,6 +9,8 @@ struct ContentView: View {
     
     @State private var lastSyncStatus: String = "Pull down to refresh"
     @State private var isSyncing = false
+    @State private var showingQRScanner = false
+    @State private var isCheckingOut = false // Tracks whether we are scanning for check-in or check-out
     
     @AppStorage("esp32BaseURL")
     private var esp32BaseURL: String = "http://192.168.1.14"
@@ -26,6 +28,8 @@ struct ContentView: View {
             1.0
         )
     }
+    
+    private var gymQR = "https://scan.page/Fkx8f4"
     
     // MARK: - Body
     
@@ -270,26 +274,19 @@ struct ContentView: View {
                         )
                         
                         // Location / accumulated time
-                        // Location / accumulated time
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                if gymTracker.isInsideGeofence {
-                                    Text("Inside Gym 📍")
-                                        .font(.caption)
-                                        .foregroundStyle(.green)
-                                } else if let distance = gymTracker.distanceToGym {
-                                    let formattedDistance = distance >= 1000
-                                        ? String(format: "%.1f km away", distance / 1000)
-                                        : String(format: "%.0f m away", distance)
-                                    
-                                    Text("Outside Gym • \(formattedDistance)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    Text("Outside Gym")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+                                Text(
+                                    gymTracker.isCheckedIn
+                                        ? "Inside Gym 📍"
+                                        : "Outside Gym"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(
+                                    gymTracker.isCheckedIn
+                                        ? .green
+                                        : .secondary
+                                )
                             }
 
                             Spacer()
@@ -305,11 +302,11 @@ struct ContentView: View {
                         // MARK: Check In / Check Out
                         
                         HStack(spacing: 12) {
-                            // CHECK IN
+                            // CHECK IN Button
                             VStack(spacing: 6) {
                                 Button {
-                                    gymTracker.checkIn()
-                                    
+                                    isCheckingOut = false
+                                    showingQRScanner = true
                                 } label: {
                                     VStack(spacing: 6) {
                                         Image(
@@ -330,7 +327,6 @@ struct ContentView: View {
                                 .buttonStyle(.bordered)
                                 .tint(.green)
                                 .disabled(
-                                    !gymTracker.isInsideGeofence ||
                                     gymTracker.isCheckedIn ||
                                     gymTracker.hasCheckedOutToday
                                 )
@@ -360,18 +356,14 @@ struct ContentView: View {
                                     .foregroundStyle(.secondary)
                                     
                                 } else {
-                                    Text(
-                                        gymTracker.isInsideGeofence
-                                        ? "Ready to check in"
-                                        : "Enter gym zone first"
-                                    )
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                    Text("Scan gym QR to check in")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
                             .frame(maxWidth: .infinity)
                             
-                            // CHECK OUT
+                            // CHECK OUT Button
                             VStack(spacing: 6) {
                                 if gymTracker.isCheckedIn,
                                    let checkInDate = gymTracker.checkInDate
@@ -391,8 +383,8 @@ struct ContentView: View {
                                         elapsed >= gymTracker.targetGymDurationSeconds
                                         
                                         Button {
-                                            gymTracker.checkOut()
-                                            
+                                            isCheckingOut = true
+                                            showingQRScanner = true
                                         } label: {
                                             VStack(spacing: 6) {
                                                 Image(
@@ -417,7 +409,7 @@ struct ContentView: View {
                                         }
                                         .buttonStyle(.borderedProminent)
                                         .tint(.red)
-                                        .disabled(!canCheckOut || !gymTracker.isInsideGeofence)
+                                        .disabled(!canCheckOut)
                                         
                                         if canCheckOut {
                                             Text("Ready to check out")
@@ -489,8 +481,7 @@ struct ContentView: View {
                                     
                                 } else {
                                     Button {
-                                        gymTracker.checkOut()
-                                        
+                                        // Disabled state placeholder
                                     } label: {
                                         VStack(spacing: 6) {
                                             Image(
@@ -623,10 +614,15 @@ struct ContentView: View {
             .refreshable {
                 await syncNow()
             }
-        }
-        
-        .onAppear {
-            gymTracker.requestLocationPermissionIfNeeded()
+            .sheet(isPresented: $showingQRScanner) {
+                QRCodeScannerView(expectedCode: gymQR) {
+                    if isCheckingOut {
+                        gymTracker.checkOut()
+                    } else {
+                        gymTracker.checkIn()
+                    }
+                }
+            }
         }
     }
     
@@ -688,12 +684,6 @@ struct ContentView: View {
         )
     }
     
-    private func elapsedText(from start: Date) -> String {
-        let elapsed = Date().timeIntervalSince(start)
-        
-        return "Time spent: " + timeString(from: elapsed)
-    }
-    
     // MARK: - Sync
     
     private func syncNow() async {
@@ -705,22 +695,16 @@ struct ContentView: View {
         }
         
         do {
-            // Refresh location so isInsideGeofence reflects the current position
-            gymTracker.refreshLocation()
-            
-            // Fetch today's HealthKit steps
             let steps =
             try await healthKit.fetchTodaySteps()
             
             healthKit.todaySteps = steps
             
-            // Refresh today's gym time
             gymTracker.loadTodayAccumulatedTime()
             
             let gymSeconds =
             Int(gymTracker.totalSecondsToday)
             
-            // Send everything to ESP32
             try await NetworkManager.shared.sendSync(
                 steps: steps,
                 gymSeconds: gymSeconds
