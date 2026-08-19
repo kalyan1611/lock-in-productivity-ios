@@ -522,31 +522,21 @@ struct ContentView: View {
                     HStack {
                         Label {
                             Text("Internet Access")
-                            
                         } icon: {
-                            Image(
-                                systemName:
-                                    network.goalMet == true
-                                ? "lock.open.fill"
-                                : "lock.fill"
-                            )
-                            .foregroundStyle(
-                                network.goalMet == true
-                                ? .green
-                                : .orange
-                            )
+                            Image(systemName: "wifi")
+                                .foregroundStyle(.blue)
                         }
                         
                         Spacer()
                         
-                        Text(internetStatusLabel)
+                        Text(internetStatus.label)
                             .font(.subheadline)
                             .fontWeight(.medium)
-                            .foregroundStyle(
-                                network.goalMet == true
-                                ? .green
-                                : .red
-                            )
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(internetStatus.color.opacity(0.12))
+                            .clipShape(Capsule())
                     }
                     
                     if !lastSyncStatus.isEmpty {
@@ -619,18 +609,14 @@ struct ContentView: View {
         }
     }
     
-    private var internetStatusLabel: String {
-        let isStale = network.connectionStatus == .offline
-        
+    private var internetStatus: (label: String, color: Color) {
         switch network.goalMet {
         case .some(true):
-            return isStale ? "Last known: Unlocked" : "Unlocked"
-            
+            return ("Full Access", .green)
         case .some(false):
-            return isStale ? "Last known: Blocked" : "Blocked"
-            
+            return ("Restricted", .red)
         case .none:
-            return "Unknown"
+            return ("Unknown", .orange)
         }
     }
     

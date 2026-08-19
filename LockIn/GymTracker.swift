@@ -7,8 +7,7 @@ final class GymTracker: ObservableObject {
     
     // MARK: - Gym Configuration
     
-//    let targetGymDurationMinutes: Int = 45
-    let targetGymDurationMinutes: Int = 1
+    let targetGymDurationMinutes: Int = 45
     var targetGymDurationSeconds: TimeInterval {
         Double(targetGymDurationMinutes * 60)
     }
