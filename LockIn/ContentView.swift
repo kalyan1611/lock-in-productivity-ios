@@ -7,7 +7,7 @@ struct ContentView: View {
     @StateObject private var network = NetworkManager.shared
     @ObservedObject private var gymTracker = GymTracker.shared
     
-    @State private var lastSyncStatus: String = "Pull down to refresh"
+    @State private var lastSyncStatus: String = ""
     @State private var isSyncing = false
     @State private var showingQRScanner = false
     @State private var isCheckingOut = false // Tracks whether we are scanning for check-in or check-out
@@ -38,7 +38,7 @@ struct ContentView: View {
             Form {
                 // MARK: - 1. Daily Movement Card
                 
-                Section("Daily Movement") {
+                Section("Steps") {
                     VStack(
                         alignment: .leading,
                         spacing: 12
@@ -46,7 +46,7 @@ struct ContentView: View {
                         // Header Row
                         HStack {
                             Label(
-                                "Steps Goal",
+                                "Today's Steps",
                                 systemImage: "figure.walk"
                             )
                             .font(.subheadline)
@@ -117,7 +117,7 @@ struct ContentView: View {
                                 alignment: .leading,
                                 spacing: 2
                             ) {
-                                Text("EST. DISTANCE")
+                                Text("DISTANCE")
                                     .font(.caption2)
                                     .fontWeight(.bold)
                                     .foregroundStyle(.tertiary)
@@ -142,10 +142,10 @@ struct ContentView: View {
                             Spacer()
                             
                             VStack(
-                                alignment: .leading,
+                                alignment: .trailing,
                                 spacing: 2
                             ) {
-                                Text("EST. BURN")
+                                Text("CALORIES")
                                     .font(.caption2)
                                     .fontWeight(.bold)
                                     .foregroundStyle(.tertiary)
@@ -156,36 +156,6 @@ struct ContentView: View {
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                             }
-                            
-                            Spacer()
-                            
-                            Divider()
-                                .frame(height: 24)
-                            
-                            Spacer()
-                            
-                            VStack(
-                                alignment: .trailing,
-                                spacing: 2
-                            ) {
-                                Text("STATUS")
-                                    .font(.caption2)
-                                    .fontWeight(.bold)
-                                    .foregroundStyle(.tertiary)
-                                
-                                Text(
-                                    stepProgress >= 1.0
-                                    ? "Completed"
-                                    : "In Progress"
-                                )
-                                .font(.caption)
-                                .fontWeight(.bold)
-                                .foregroundStyle(
-                                    stepProgress >= 1.0
-                                    ? .green
-                                    : .orange
-                                )
-                            }
                         }
                         .padding(.top, 4)
                     }
@@ -194,7 +164,7 @@ struct ContentView: View {
                 
                 // MARK: - 2. Gym Attendance Card
                 
-                Section("Gym Attendance") {
+                Section("Gym Session") {
                     VStack(
                         alignment: .leading,
                         spacing: 12
@@ -202,7 +172,7 @@ struct ContentView: View {
                         // Header
                         HStack {
                             Label(
-                                "Time spent",
+                                "Session Time",
                                 systemImage: "dumbbell.fill"
                             )
                             .font(.subheadline)
@@ -278,19 +248,19 @@ struct ContentView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(
                                     gymTracker.isCheckedIn
-                                        ? "Inside Gym 📍"
-                                        : "Outside Gym"
+                                    ? "Checked In"
+                                    : (gymTracker.hasCheckedOutToday ? "Session Complete" : "Not Checked In")
                                 )
                                 .font(.caption)
                                 .foregroundStyle(
                                     gymTracker.isCheckedIn
-                                        ? .green
-                                        : .secondary
+                                    ? .green
+                                    : .secondary
                                 )
                             }
-
+                            
                             Spacer()
-
+                            
                             Text(
                                 "\(Int(gymTracker.totalSecondsToday / 60))/\(gymTracker.targetGymDurationMinutes) mins"
                             )
@@ -356,7 +326,7 @@ struct ContentView: View {
                                     .foregroundStyle(.secondary)
                                     
                                 } else {
-                                    Text("Scan gym QR to check in")
+                                    Text("Scan the gym QR code")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
@@ -418,7 +388,7 @@ struct ContentView: View {
                                             
                                         } else {
                                             Text(
-                                                "Available in " +
+                                                "Unlocks in " +
                                                 timeString(
                                                     from:
                                                         max(
@@ -440,7 +410,7 @@ struct ContentView: View {
                                         VStack(spacing: 6) {
                                             Image(
                                                 systemName:
-                                                    "figure.walk.departure"
+                                                    "checkmark.circle.fill"
                                             )
                                             .font(
                                                 .system(
@@ -449,7 +419,7 @@ struct ContentView: View {
                                                 )
                                             )
                                             
-                                            Text("Checked Out")
+                                            Text("Done")
                                                 .font(.subheadline)
                                                 .fontWeight(.semibold)
                                         }
@@ -472,11 +442,6 @@ struct ContentView: View {
                                         )
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
-                                        
-                                    } else {
-                                        Text("Done for today")
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
                                     }
                                     
                                 } else {
@@ -521,10 +486,10 @@ struct ContentView: View {
                 
                 // MARK: - 3. Hardware Hub
                 
-                Section("Control Hub") {
+                Section("Device Status") {
                     HStack {
                         Label {
-                            Text("Lock Controller")
+                            Text("Gate Controller")
                             
                         } icon: {
                             Image(systemName: "cpu")
@@ -655,17 +620,14 @@ struct ContentView: View {
     }
     
     private var internetStatusLabel: String {
-        let stalePrefix =
-        network.connectionStatus == .offline
-        ? "(last) "
-        : ""
+        let isStale = network.connectionStatus == .offline
         
         switch network.goalMet {
         case .some(true):
-            return stalePrefix + "Granted"
+            return isStale ? "Last known: Unlocked" : "Unlocked"
             
         case .some(false):
-            return stalePrefix + "Restricted"
+            return isStale ? "Last known: Blocked" : "Blocked"
             
         case .none:
             return "Unknown"
@@ -712,7 +674,7 @@ struct ContentView: View {
             
         } catch {
             lastSyncStatus =
-            "Sync failed: \(error.localizedDescription)"
+            "Couldn't reach your gate device — \(error.localizedDescription)"
         }
     }
 }
