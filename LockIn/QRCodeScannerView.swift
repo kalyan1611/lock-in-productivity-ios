@@ -100,7 +100,7 @@ class QRScannerController: UIViewController, AVCaptureMetadataOutputObjectsDeleg
         view.addSubview(titleBackdrop)
 
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.text = "Align Gym QR Code Inside Frame"
+        titleLabel.text = "Position the Gym QR code inside the box"
         titleLabel.textColor = .white
         titleLabel.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
         titleLabel.textAlignment = .center
@@ -114,7 +114,7 @@ class QRScannerController: UIViewController, AVCaptureMetadataOutputObjectsDeleg
         view.addSubview(errorBackdrop)
 
         errorFeedbackLabel.translatesAutoresizingMaskIntoConstraints = false
-        errorFeedbackLabel.text = "Invalid QR Code. Try Again."
+        errorFeedbackLabel.text = "Nice try, but that's not the Gym QR code"
         errorFeedbackLabel.textColor = .systemRed
         errorFeedbackLabel.font = UIFont.systemFont(ofSize: 14, weight: .bold)
         errorFeedbackLabel.textAlignment = .center
