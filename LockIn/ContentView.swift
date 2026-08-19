@@ -352,7 +352,8 @@ struct ContentView: View {
                                 .tint(.green)
                                 .disabled(
                                     !gymTracker.isInsideGeofence ||
-                                    gymTracker.isCheckedIn
+                                    gymTracker.isCheckedIn ||
+                                    gymTracker.hasCheckedOutToday
                                 )
                                 
                                 if let checkInDate = gymTracker.checkInDate {
@@ -360,6 +361,19 @@ struct ContentView: View {
                                     Text(
                                         "Checked in at " +
                                         checkInDate.formatted(
+                                            date: .omitted,
+                                            time: .shortened
+                                        )
+                                    )
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    
+                                } else if gymTracker.hasCheckedOutToday,
+                                          let lastCheckInDate = gymTracker.lastCheckInDate {
+                                    
+                                    Text(
+                                        "Checked in at " +
+                                        lastCheckInDate.formatted(
                                             date: .omitted,
                                             time: .shortened
                                         )
@@ -411,7 +425,7 @@ struct ContentView: View {
                                                 
                                                 Image(
                                                     systemName:
-                                                        "figure.walk.arrival"
+                                                        "figure.walk.departure"
                                                 )
                                                 .font(
                                                     .system(
@@ -457,6 +471,57 @@ struct ContentView: View {
                                         }
                                     }
                                     
+                                } else if gymTracker.hasCheckedOutToday {
+                                    
+                                    Button {
+                                        // No-op: already checked out for today
+                                    } label: {
+                                        
+                                        VStack(spacing: 6) {
+                                            
+                                            Image(
+                                                systemName:
+                                                    "figure.walk.departure"
+                                            )
+                                            .font(
+                                                .system(
+                                                    size: 20,
+                                                    weight: .semibold
+                                                )
+                                            )
+                                            
+                                            Text("Checked Out")
+                                                .font(.subheadline)
+                                                .fontWeight(.semibold)
+                                        }
+                                        .frame(
+                                            maxWidth: .infinity
+                                        )
+                                        .frame(height: 65)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .tint(.gray)
+                                    .disabled(true)
+                                    
+                                    if let lastCheckOutDate = gymTracker.lastCheckOutDate {
+                                        
+                                        Text(
+                                            "Checked out at " +
+                                            lastCheckOutDate.formatted(
+                                                date: .omitted,
+                                                time: .shortened
+                                            )
+                                        )
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        
+                                    } else {
+                                        
+                                        Text("Done for today")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    
                                 } else {
                                     
                                     Button {
@@ -469,7 +534,7 @@ struct ContentView: View {
                                             
                                             Image(
                                                 systemName:
-                                                    "figure.walk.arrival"
+                                                    "figure.walk.departure"
                                             )
                                             .font(
                                                 .system(
