@@ -22,8 +22,8 @@ final class NetworkManager: ObservableObject {
     @Published var connectionStatus: ConnectionStatus = .unknown
     @Published var lastCheckedAt: Date?
 
-    /// Overall goal verdict from ESP32
-    @Published var goalMet: Bool?
+    /// Full internet unlock verdict from ESP32 (incorporates time window & goals)
+    @Published var isGateOpen: Bool?
 
     /// Individual gate statuses
     @Published var stepGoalMet: Bool?
@@ -45,8 +45,7 @@ final class NetworkManager: ObservableObject {
         let stepGoalMet: Bool
         let gymGoalMet: Bool
         let leetCodeGoalMet: Bool?
-        let goalMet: Bool
-        let fullInternetUnlocked: Bool
+        let isGateOpen: Bool
     }
 
     struct StatusResult: Decodable {
@@ -60,9 +59,8 @@ final class NetworkManager: ObservableObject {
         let stepGoalMet: Bool
         let gymGoalMet: Bool
         let leetCodeGoalMet: Bool?
-        let overallGoalMet: Bool
         let withinAllowedHours: Bool
-        let fullInternetUnlocked: Bool
+        let isGateOpen: Bool
     }
 
     private func baseURL() throws -> String {
@@ -116,7 +114,7 @@ final class NetworkManager: ObservableObject {
             lastCheckedAt = Date()
 
             let result = try JSONDecoder().decode(SyncResult.self, from: data)
-            goalMet = result.goalMet
+            isGateOpen = result.isGateOpen
             stepGoalMet = result.stepGoalMet
             gymGoalMet = result.gymGoalMet
             leetCodeGoalMet = result.leetCodeGoalMet
@@ -159,7 +157,7 @@ final class NetworkManager: ObservableObject {
 
             connectionStatus = .online
             if let decoded = try? JSONDecoder().decode(StatusResult.self, from: data) {
-                goalMet = decoded.overallGoalMet
+                isGateOpen = decoded.isGateOpen
                 stepGoalMet = decoded.stepGoalMet
                 gymGoalMet = decoded.gymGoalMet
                 leetCodeGoalMet = decoded.leetCodeGoalMet

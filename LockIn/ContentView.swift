@@ -106,11 +106,12 @@ struct ContentView: View {
                             }
                         }
                         
-                        // Status Metrics
                         HStack {
-                            Text(gymStatusText)
-                                .font(.caption)
-                                .foregroundStyle(gymTracker.isCheckedIn ? .green : .secondary)
+                            if !gymTracker.hasCheckedOutToday {
+                                Text(gymStatusText)
+                                    .font(.caption)
+                                    .foregroundStyle(gymTracker.isCheckedIn ? .green : .secondary)
+                            }
                             
                             Spacer()
                             
@@ -357,20 +358,18 @@ struct ContentView: View {
                 }
             }
         } else if gymTracker.hasCheckedOutToday {
-            VStack(spacing: 4) {
-                Button {} label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill")
-                        Text("Session Complete")
-                    }
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: checkButtonsHeight)
+            VStack(spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("Session Complete")
                 }
-                .buttonStyle(.bordered)
-                .tint(.secondary)
-                .disabled(true)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.green)
+                .frame(maxWidth: .infinity)
+                .frame(height: checkButtonsHeight)
+                .background(Color.green.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 
                 if let inTime = gymTracker.lastCheckInDate?.formatted(date: .omitted, time: .shortened),
                    let outTime = gymTracker.lastCheckOutDate?.formatted(date: .omitted, time: .shortened) {
@@ -427,7 +426,7 @@ struct ContentView: View {
     }
     
     private var internetStatus: (label: String, color: Color) {
-        switch network.goalMet {
+        switch network.isGateOpen {
         case .some(true): return ("Full Access", .green)
         case .some(false): return ("Restricted", .red)
         case .none: return ("Unknown", .orange)
