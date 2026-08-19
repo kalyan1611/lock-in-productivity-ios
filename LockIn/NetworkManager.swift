@@ -11,16 +11,17 @@ final class NetworkManager: ObservableObject {
         case offline
     }
 
-    private let esp32BaseURL = "http://192.168.1.14"
+    private let esp32BaseURL = AppConfig.Gate.baseURL
     private var apiKey: String {
-        return UserDefaults.standard.string(forKey: "esp32APIKey") ?? "garmo9-syhgAv-mytxun"
+        return UserDefaults.standard.string(forKey: AppConfig.DefaultsKey.esp32APIKeyOverride)
+            ?? AppConfig.Gate.defaultAPIKey
     }
 
     // Gate Controller online status (Driven strictly by checkStatus())
     @Published var connectionStatus: ConnectionStatus = .unknown
     @Published var lastCheckedAt: Date?
 
-    // Internet Access verdict (Driven strictly by sendSync())
+    /// Internet Access verdict (Driven strictly by sendSync())
     @Published var isGateOpen: Bool?
 
     @Published var stepGoalMet: Bool?
@@ -48,20 +49,20 @@ final class NetworkManager: ObservableObject {
     @discardableResult
     @MainActor
     func sendSync(steps: Int, gymSeconds: Int, leetCodeSolved: Int) async throws -> SyncResult {
-        guard let url = URL(string: esp32BaseURL + "/sync") else {
+        guard let url = URL(string: esp32BaseURL + AppConfig.Gate.syncPath) else {
             throw SyncError(message: "Invalid ESP32 address")
         }
 
         var request = URLRequest(url: url)
-        request.httpMethod = "POST"
+        request.httpMethod = AppConfig.Gate.Method.post
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
-        request.timeoutInterval = 3
+        request.timeoutInterval = AppConfig.Gate.requestTimeout
 
         let payload: [String: Int] = [
             "steps": steps,
             "gymSeconds": gymSeconds,
-            "leetCodeSolved": leetCodeSolved
+            "leetCodeSolved": leetCodeSolved,
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
@@ -90,16 +91,16 @@ final class NetworkManager: ObservableObject {
     /// Lightweight ping check determining Gate Controller online status strictly via GET /status
     @MainActor
     func checkStatus() async {
-        guard let url = URL(string: esp32BaseURL + "/status") else {
+        guard let url = URL(string: esp32BaseURL + AppConfig.Gate.statusPath) else {
             connectionStatus = .offline
             lastCheckedAt = Date()
             return
         }
 
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = AppConfig.Gate.Method.get
         request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
-        request.timeoutInterval = 3
+        request.timeoutInterval = AppConfig.Gate.requestTimeout
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)

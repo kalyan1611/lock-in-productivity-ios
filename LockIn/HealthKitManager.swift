@@ -19,7 +19,7 @@ final class HealthKitManager: ObservableObject {
     private var observerQuery: HKObserverQuery?
 
     @Published var todaySteps: Int = 0
-    @Published var targetSteps: Int = 10000
+    @Published var targetSteps: Int = AppConfig.Steps.dailyTarget
     @Published var authorizationStatus: HKAuthorizationStatus = .notDetermined
 
     private init() {}
@@ -62,7 +62,7 @@ final class HealthKitManager: ObservableObject {
                     continuation.resume(throwing: error)
                     return
                 }
-                
+
                 let sum = result?.sumQuantity()?.doubleValue(for: .count()) ?? 0
                 continuation.resume(returning: Int(sum))
             }
