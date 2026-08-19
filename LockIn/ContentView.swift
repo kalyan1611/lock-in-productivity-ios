@@ -1,5 +1,4 @@
 import SwiftUI
-import MapKit
 
 struct ContentView: View {
     
@@ -214,11 +213,11 @@ struct ContentView: View {
                     
                     VStack(
                         alignment: .leading,
-                        spacing: 10
+                        spacing: 12
                     ) {
                         
+                        // Header
                         HStack {
-                            
                             Label(
                                 "Time spent",
                                 systemImage: "dumbbell.fill"
@@ -228,20 +227,59 @@ struct ContentView: View {
                             
                             Spacer()
                             
-                            Image(
-                                systemName:
+                            if gymTracker.isCheckedIn,
+                               let checkInDate = gymTracker.checkInDate {
+                                
+                                TimelineView(.periodic(from: checkInDate, by: 1)) { context in
+                                    
+                                    let elapsed =
+                                    context.date.timeIntervalSince(checkInDate)
+                                    
+                                    let remaining =
+                                    max(
+                                        (45 * 60) - elapsed,
+                                        0
+                                    )
+                                    
+                                    HStack(spacing: 6) {
+                                        
+                                        Image(systemName: "timer")
+                                        
+                                        Text(
+                                            remaining > 0
+                                            ? timeString(from: remaining)
+                                            : "45:00"
+                                        )
+                                        .monospacedDigit()
+                                        .fontWeight(.bold)
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(.green)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        Color.green.opacity(0.12)
+                                    )
+                                    .clipShape(Capsule())
+                                }
+                                
+                            } else {
+                                
+                                Image(
+                                    systemName:
+                                        gymTracker.isGateUnlocked
+                                    ? "checkmark.circle.fill"
+                                    : "lock.fill"
+                                )
+                                .foregroundStyle(
                                     gymTracker.isGateUnlocked
-                                ? "checkmark.circle.fill"
-                                : "lock.fill"
-                            )
-                            .foregroundStyle(
-                                gymTracker.isGateUnlocked
-                                ? .green
-                                : .red
-                            )
+                                    ? .green
+                                    : .red
+                                )
+                            }
                         }
                         
-                        // Gym Progress
+                        // Progress
                         ProgressView(
                             value: min(
                                 gymTracker.totalSecondsToday /
@@ -255,6 +293,7 @@ struct ContentView: View {
                             : .orange
                         )
                         
+                        // Location / accumulated time
                         HStack {
                             
                             VStack(
@@ -263,16 +302,17 @@ struct ContentView: View {
                             ) {
                                 
                                 Text(
-                                    gymTracker.isCurrentlyAtGym
-                                    ? "At Gym📍"
-                                    : "Out of Range"
+                                    gymTracker.isInsideGeofence
+                                    ? "Inside Gym 📍"
+                                    : "Outside Gym"
                                 )
                                 .font(.caption)
                                 .foregroundStyle(
-                                    gymTracker.isCurrentlyAtGym
+                                    gymTracker.isInsideGeofence
                                     ? .green
                                     : .secondary
                                 )
+                                
                             }
                             
                             Spacer()
@@ -285,50 +325,186 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                         }
                         
-                        // Gym Map
-                        Map(
-                            position: .constant(
-                                .region(
-                                    MKCoordinateRegion(
-                                        center:
-                                            gymTracker.gymCoordinate,
-                                        span:
-                                            MKCoordinateSpan(
-                                                latitudeDelta: 0.005,
-                                                longitudeDelta: 0.005
-                                            )
+                        // MARK: Check In / Check Out
+                        
+                        HStack(spacing: 12) {
+                            
+                            // CHECK IN
+                            VStack(spacing: 6) {
+                                
+                                Button {
+                                    
+                                    gymTracker.checkIn()
+                                    
+                                } label: {
+                                    
+                                    VStack(spacing: 6) {
+                                        
+                                        Image(
+                                            systemName:
+                                                "figure.strengthtraining.traditional"
+                                        )
+                                        .font(.system(size: 20, weight: .semibold))
+                                        
+                                        Text("Check In")
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                    }
+                                    .frame(
+                                        maxWidth: .infinity
                                     )
+                                    .frame(height: 65)
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.green)
+                                .disabled(
+                                    !gymTracker.isInsideGeofence ||
+                                    gymTracker.isCheckedIn
                                 )
-                            )
-                        ) {
+                                
+                                if let checkInDate = gymTracker.checkInDate {
+                                    
+                                    Text(
+                                        "Checked in at " +
+                                        checkInDate.formatted(
+                                            date: .omitted,
+                                            time: .shortened
+                                        )
+                                    )
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    
+                                } else {
+                                    
+                                    Text(
+                                        gymTracker.isInsideGeofence
+                                        ? "Ready to check in"
+                                        : "Enter gym zone first"
+                                    )
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
                             
-                            Marker(
-                                "Gym Zone",
-                                coordinate:
-                                    gymTracker.gymCoordinate
-                            )
-                            .tint(.red)
-                            
-                            MapCircle(
-                                center:
-                                    gymTracker.gymCoordinate,
-                                radius: 40
-                            )
-                            .foregroundStyle(
-                                Color.red.opacity(0.15)
-                            )
-                            .stroke(
-                                .red,
-                                lineWidth: 1
-                            )
+                            // CHECK OUT
+                            VStack(spacing: 6) {
+                                
+                                if gymTracker.isCheckedIn,
+                                   let checkInDate = gymTracker.checkInDate {
+                                    
+                                    TimelineView(
+                                        .periodic(
+                                            from: checkInDate,
+                                            by: 1
+                                        )
+                                    ) { context in
+                                        
+                                        let elapsed =
+                                        context.date.timeIntervalSince(
+                                            checkInDate
+                                        )
+                                        
+                                        let canCheckOut =
+                                        elapsed >= (45 * 60)
+                                        
+                                        Button {
+                                            
+                                            gymTracker.checkOut()
+                                            
+                                        } label: {
+                                            
+                                            VStack(spacing: 6) {
+                                                
+                                                Image(
+                                                    systemName:
+                                                        "figure.walk.arrival"
+                                                )
+                                                .font(
+                                                    .system(
+                                                        size: 20,
+                                                        weight: .semibold
+                                                    )
+                                                )
+                                                
+                                                Text("Check Out")
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                            }
+                                            .frame(
+                                                maxWidth: .infinity
+                                            )
+                                            .frame(height: 65)
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .tint(.red)
+                                        .disabled(!canCheckOut)
+                                        
+                                        if canCheckOut {
+                                            
+                                            Text("Ready to check out")
+                                                .font(.caption2)
+                                                .foregroundStyle(.green)
+                                            
+                                        } else {
+                                            
+                                            Text(
+                                                "Available in " +
+                                                timeString(
+                                                    from:
+                                                        max(
+                                                            (45 * 60) - elapsed,
+                                                            0
+                                                        )
+                                                )
+                                            )
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                            .monospacedDigit()
+                                        }
+                                    }
+                                    
+                                } else {
+                                    
+                                    Button {
+                                        
+                                        gymTracker.checkOut()
+                                        
+                                    } label: {
+                                        
+                                        VStack(spacing: 6) {
+                                            
+                                            Image(
+                                                systemName:
+                                                    "figure.walk.arrival"
+                                            )
+                                            .font(
+                                                .system(
+                                                    size: 20,
+                                                    weight: .semibold
+                                                )
+                                            )
+                                            
+                                            Text("Check Out")
+                                                .font(.subheadline)
+                                                .fontWeight(.semibold)
+                                        }
+                                        .frame(
+                                            maxWidth: .infinity
+                                        )
+                                        .frame(height: 65)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .tint(.red)
+                                    .disabled(true)
+                                    
+                                    Text("Check in first")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
                         }
-                        .frame(height: 100)
-                        .clipShape(
-                            RoundedRectangle(
-                                cornerRadius: 8
-                            )
-                        )
-                        .disabled(true)
                     }
                     .padding(.vertical, 4)
                 }
@@ -437,7 +613,7 @@ struct ContentView: View {
                 await syncNow()
             }
         }
-                
+        
         .onAppear {
             gymTracker.requestLocationPermissionIfNeeded()
         }
@@ -493,6 +669,24 @@ struct ContentView: View {
         case .none:
             return "Unknown"
         }
+    }
+    
+    private func timeString(from seconds: TimeInterval) -> String {
+        let total = max(Int(seconds), 0)
+        let minutes = total / 60
+        let seconds = total % 60
+        
+        return String(
+            format: "%02d:%02d",
+            minutes,
+            seconds
+        )
+    }
+    
+    private func elapsedText(from start: Date) -> String {
+        let elapsed = Date().timeIntervalSince(start)
+        
+        return "Time spent: " + timeString(from: elapsed)
     }
     
     // MARK: - Sync
