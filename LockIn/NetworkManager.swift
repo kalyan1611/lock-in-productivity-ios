@@ -1,8 +1,6 @@
 import Combine
 import Foundation
 
-/// Sends step counts, gym duration, and LeetCode problem solves to the ESP32 over the local network,
-/// and tracks reachability and gate status.
 final class NetworkManager: ObservableObject {
     static let shared = NetworkManager()
     private init() {}
@@ -14,18 +12,17 @@ final class NetworkManager: ObservableObject {
     }
 
     private let esp32BaseURL = "http://192.168.1.14"
-    /// Secure pre-shared API key to restrict access to authorized clients only
     private var apiKey: String {
         return UserDefaults.standard.string(forKey: "esp32APIKey") ?? "garmo9-syhgAv-mytxun"
     }
 
+    // Gate Controller online status (Driven strictly by checkStatus())
     @Published var connectionStatus: ConnectionStatus = .unknown
     @Published var lastCheckedAt: Date?
 
-    /// Full internet unlock verdict from ESP32 (incorporates time window & goals)
+    // Internet Access verdict (Driven strictly by sendSync())
     @Published var isGateOpen: Bool?
 
-    /// Individual gate statuses
     @Published var stepGoalMet: Bool?
     @Published var gymGoalMet: Bool?
     @Published var leetCodeGoalMet: Bool?
@@ -48,41 +45,17 @@ final class NetworkManager: ObservableObject {
         let isGateOpen: Bool
     }
 
-    struct StatusResult: Decodable {
-        let today: String
-        let steps: Int
-        let stepGoal: Int
-        let gymSeconds: Int
-        let gymGoalSeconds: Int
-        let leetCodeSolved: Int?
-        let leetCodeGoal: Int?
-        let stepGoalMet: Bool
-        let gymGoalMet: Bool
-        let leetCodeGoalMet: Bool?
-        let withinAllowedHours: Bool
-        let isGateOpen: Bool
-    }
-
-    private func baseURL() throws -> String {
-        return esp32BaseURL
-    }
-
-    /// Sends current steps, accumulated gym seconds, and solved LeetCode problems to POST /sync
     @discardableResult
     @MainActor
     func sendSync(steps: Int, gymSeconds: Int, leetCodeSolved: Int) async throws -> SyncResult {
-        let base = try baseURL()
-        guard let url = URL(string: base + "/sync") else {
+        guard let url = URL(string: esp32BaseURL + "/sync") else {
             throw SyncError(message: "Invalid ESP32 address")
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        // Secure header to restrict access to authorized iOS app only
         request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
-
         request.timeoutInterval = 3
 
         let payload: [String: Int] = [
@@ -92,61 +65,44 @@ final class NetworkManager: ObservableObject {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw SyncError(message: "Invalid response from ESP32")
-            }
-
-            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-                connectionStatus = .offline
-                lastCheckedAt = Date()
-                throw SyncError(message: "Unauthorized: Invalid ESP32 API Key")
-            }
-
-            guard (200 ... 299).contains(httpResponse.statusCode) else {
-                connectionStatus = .offline
-                lastCheckedAt = Date()
-                throw SyncError(message: "ESP32 returned a non-success status")
-            }
-
-            connectionStatus = .online
-            lastCheckedAt = Date()
-
-            let result = try JSONDecoder().decode(SyncResult.self, from: data)
-            isGateOpen = result.isGateOpen
-            stepGoalMet = result.stepGoalMet
-            gymGoalMet = result.gymGoalMet
-            leetCodeGoalMet = result.leetCodeGoalMet
-
-            return result
-        } catch {
-            connectionStatus = .offline
-            lastCheckedAt = Date()
-            throw error
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SyncError(message: "Invalid response from ESP32")
         }
+
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw SyncError(message: "Unauthorized: Invalid ESP32 API Key")
+        }
+
+        guard (200 ... 299).contains(httpResponse.statusCode) else {
+            throw SyncError(message: "ESP32 returned a non-success status")
+        }
+
+        let result = try JSONDecoder().decode(SyncResult.self, from: data)
+        isGateOpen = result.isGateOpen
+        stepGoalMet = result.stepGoalMet
+        gymGoalMet = result.gymGoalMet
+        leetCodeGoalMet = result.leetCodeGoalMet
+
+        return result
     }
 
-    /// Lightweight ping check against GET /status with API Key authentication
+    /// Lightweight ping check determining Gate Controller online status strictly via GET /status
     @MainActor
     func checkStatus() async {
+        guard let url = URL(string: esp32BaseURL + "/status") else {
+            connectionStatus = .offline
+            lastCheckedAt = Date()
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
+        request.timeoutInterval = 3
+
         do {
-            let base = try baseURL()
-            guard let url = URL(string: base + "/status") else {
-                connectionStatus = .offline
-                lastCheckedAt = Date()
-                return
-            }
-
-            var request = URLRequest(url: url)
-            request.httpMethod = "GET"
-
-            // Secure header to restrict access
-            request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
-
-            request.timeoutInterval = 3
-
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
                   (200 ... 299).contains(httpResponse.statusCode)
             else {
@@ -156,12 +112,6 @@ final class NetworkManager: ObservableObject {
             }
 
             connectionStatus = .online
-            if let decoded = try? JSONDecoder().decode(StatusResult.self, from: data) {
-                isGateOpen = decoded.isGateOpen
-                stepGoalMet = decoded.stepGoalMet
-                gymGoalMet = decoded.gymGoalMet
-                leetCodeGoalMet = decoded.leetCodeGoalMet
-            }
         } catch {
             connectionStatus = .offline
         }

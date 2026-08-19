@@ -10,20 +10,13 @@ struct ContentView: View {
     @State private var showingQRScanner = false
     @State private var isCheckingOut = false
     
-    // Toggle for LeetCode breakdown
-    @State private var isLeetCodeExpanded = false
-    
     private var checkButtonsHeight: CGFloat = 38
     private var gymQR = "https://scan.page/Fkx8f4"
-    
-    // MARK: - Step Progress
     
     private var stepProgress: Double {
         guard healthKit.targetSteps > 0 else { return 0 }
         return min(Double(healthKit.todaySteps) / Double(healthKit.targetSteps), 1.0)
     }
-    
-    // MARK: - Gym Helper
     
     private var gymStatusText: String {
         if gymTracker.isCheckedIn {
@@ -35,13 +28,10 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Body
-    
     var body: some View {
         NavigationStack {
             Form {
                 // MARK: - 1. Daily Movement Card
-                
                 Section("Steps") {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -51,8 +41,8 @@ struct ContentView: View {
                             
                             Spacer()
                             
-                            Image(systemName: stepProgress >= 1.0 ? "checkmark.circle.fill" : "lock.fill")
-                                .foregroundStyle(stepProgress >= 1.0 ? .green : .red)
+                            Image(systemName: stepProgress >= 1.0 ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(stepProgress >= 1.0 ? .green : .secondary)
                         }
                         
                         HStack(alignment: .firstTextBaseline) {
@@ -71,10 +61,8 @@ struct ContentView: View {
                 }
                 
                 // MARK: - 2. Gym Attendance Card
-                
                 Section("Gym Session") {
                     VStack(alignment: .leading, spacing: 8) {
-                        // Header Row
                         HStack {
                             Label("Session Time", systemImage: "dumbbell.fill")
                                 .font(.subheadline)
@@ -101,8 +89,8 @@ struct ContentView: View {
                                     .clipShape(Capsule())
                                 }
                             } else {
-                                Image(systemName: gymTracker.isGateUnlocked ? "checkmark.circle.fill" : "lock.fill")
-                                    .foregroundStyle(gymTracker.isGateUnlocked ? .green : .red)
+                                Image(systemName: gymTracker.isGateUnlocked ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(gymTracker.isGateUnlocked ? .green : .secondary)
                             }
                         }
                         
@@ -111,27 +99,24 @@ struct ContentView: View {
                                 Text(gymStatusText)
                                     .font(.caption)
                                     .foregroundStyle(gymTracker.isCheckedIn ? .green : .secondary)
+                                
+                                Spacer()
+                                
+                                Text("\(Int(gymTracker.totalSecondsToday / 60))/\(gymTracker.targetGymDurationMinutes) mins")
+                                    .font(.caption)
+                                    .bold()
+                                    .foregroundStyle(.secondary)
                             }
-                            
-                            Spacer()
-                            
-                            Text("\(Int(gymTracker.totalSecondsToday / 60))/\(gymTracker.targetGymDurationMinutes) mins")
-                                .font(.caption)
-                                .bold()
-                                .foregroundStyle(.secondary)
                         }
                         
-                        // Single Dynamic Action Button
                         gymActionButton
                     }
                     .padding(.vertical, 2)
                 }
                 
                 // MARK: - 3. LeetCode Session Card
-                
                 Section("LeetCode") {
                     VStack(alignment: .leading, spacing: 8) {
-                        // Header Row (Stationary)
                         HStack {
                             Label("Today's submissions", systemImage: "chevron.left.forwardslash.chevron.right")
                                 .font(.subheadline)
@@ -143,12 +128,11 @@ struct ContentView: View {
                                 ProgressView()
                                     .controlSize(.small)
                             } else {
-                                Image(systemName: leetCode.isGoalMet ? "checkmark.circle.fill" : "lock.fill")
-                                    .foregroundStyle(leetCode.isGoalMet ? .green : .red)
+                                Image(systemName: leetCode.isGoalMet ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(leetCode.isGoalMet ? .green : .secondary)
                             }
                         }
                         
-                        // Big Metric Display (Stationary)
                         HStack(alignment: .firstTextBaseline) {
                             Text("\(leetCode.totalTodayCount)")
                                 .font(.system(size: 32, weight: .bold, design: .rounded))
@@ -161,145 +145,105 @@ struct ContentView: View {
                             Spacer()
                         }
                         
-                        // Collapsible Header Toggle
-                        Button {
-                            isLeetCodeExpanded.toggle()
-                        } label: {
-                            HStack {
-                                Text("Difficulty Breakdown")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .foregroundStyle(.secondary)
-                                
-                                Spacer()
-                                
-                                Image(systemName: "chevron.right")
+                        Text("Difficulty Breakdown")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.secondary)
+                        
+                        HStack {
+                            VStack(spacing: 2) {
+                                Text("EASY")
                                     .font(.caption2)
                                     .fontWeight(.bold)
-                                    .foregroundStyle(.secondary)
-                                    .rotationEffect(.degrees(isLeetCodeExpanded ? 90 : 0))
-                                    .animation(.easeInOut(duration: 0.2), value: isLeetCodeExpanded)
+                                    .foregroundStyle(.green)
+                                
+                                Text("\(leetCode.easyTodayCount)")
+                                    .font(.subheadline)
+                                    .fontWeight(.bold)
                             }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        
-                        // Isolated Collapsible Breakdown Content
-                        Group {
-                            if isLeetCodeExpanded {
-                                HStack {
-                                    VStack(spacing: 2) {
-                                        Text("EASY")
-                                            .font(.caption2)
-                                            .fontWeight(.bold)
-                                            .foregroundStyle(.green)
-                                        
-                                        Text("\(leetCode.easyTodayCount)")
-                                            .font(.subheadline)
-                                            .fontWeight(.bold)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    
-                                    Divider()
-                                        .frame(height: 20)
-                                    
-                                    VStack(spacing: 2) {
-                                        Text("MEDIUM")
-                                            .font(.caption2)
-                                            .fontWeight(.bold)
-                                            .foregroundStyle(.orange)
-                                        
-                                        Text("\(leetCode.mediumTodayCount)")
-                                            .font(.subheadline)
-                                            .fontWeight(.bold)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    
-                                    Divider()
-                                        .frame(height: 20)
-                                    
-                                    VStack(spacing: 2) {
-                                        Text("HARD")
-                                            .font(.caption2)
-                                            .fontWeight(.bold)
-                                            .foregroundStyle(.red)
-                                        
-                                        Text("\(leetCode.hardTodayCount)")
-                                            .font(.subheadline)
-                                            .fontWeight(.bold)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                }
-                                .transition(.opacity.combined(with: .move(edge: .top)))
+                            .frame(maxWidth: .infinity)
+                            
+                            Divider()
+                                .frame(height: 20)
+                            
+                            VStack(spacing: 2) {
+                                Text("MEDIUM")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.orange)
+                                
+                                Text("\(leetCode.mediumTodayCount)")
+                                    .font(.subheadline)
+                                    .fontWeight(.bold)
                             }
+                            .frame(maxWidth: .infinity)
+                            
+                            Divider()
+                                .frame(height: 20)
+                            
+                            VStack(spacing: 2) {
+                                Text("HARD")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.red)
+                                
+                                Text("\(leetCode.hardTodayCount)")
+                                    .font(.subheadline)
+                                    .fontWeight(.bold)
+                            }
+                            .frame(maxWidth: .infinity)
                         }
-                        .animation(.easeInOut(duration: 0.25), value: isLeetCodeExpanded)
                     }
                     .padding(.vertical, 2)
                 }
                 
                 // MARK: - 4. Hardware Hub
-                
                 Section("Device Status") {
-                    HStack {
-                        Label {
-                            Text("Gate Controller")
-                        } icon: {
-                            Image(systemName: "cpu")
-                                .foregroundStyle(.blue)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Label("Internet Access", systemImage: "wifi")
+                                .font(.subheadline)
+                                .bold()
+                            
+                            Spacer()
+                            
+                            Image(systemName: gateIconName)
+                                .font(.title3)
+                                .foregroundStyle(internetStatus.color)
                         }
-                        
-                        Spacer()
                         
                         HStack(spacing: 6) {
                             Circle()
                                 .fill(statusColor)
-                                .frame(width: 8, height: 8)
+                                .frame(width: 6, height: 6)
+                            
+                            Text("Gate Controller")
+                                .foregroundStyle(.secondary)
+                            
+                            Text("•")
+                                .foregroundStyle(.tertiary)
                             
                             Text(statusLabel)
-                                .font(.subheadline)
+                                .foregroundStyle(statusColor)
                                 .fontWeight(.medium)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(statusColor.opacity(0.12))
-                        .clipShape(Capsule())
-                    }
-                    
-                    HStack {
-                        Label {
-                            Text("Internet Access")
-                        } icon: {
-                            Image(systemName: "wifi")
-                                .foregroundStyle(.blue)
-                        }
-                        
-                        Spacer()
-                        
-                        Text(internetStatus.label)
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(internetStatus.color.opacity(0.12))
-                            .clipShape(Capsule())
-                    }
-                    
-                    if !lastSyncStatus.isEmpty {
-                        Text(lastSyncStatus)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    } else if let lastChecked = network.lastCheckedAt {
-                        HStack {
-                            Text("Last Verified")
-                            Spacer()
-                            Text(lastChecked.formatted(date: .omitted, time: .shortened))
                         }
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        
+                        if !lastSyncStatus.isEmpty {
+                            Text(lastSyncStatus)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        } else if let lastChecked = network.lastCheckedAt {
+                            HStack {
+                                Text("Last Verified")
+                                Spacer()
+                                Text(lastChecked.formatted(date: .omitted, time: .shortened))
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                        }
                     }
+                    .padding(.vertical, 2)
                 }
             }
             .listSectionSpacing(.compact)
@@ -309,6 +253,7 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .task {
                 await leetCode.fetchTodaySolvedProblems()
+                await network.checkStatus()
             }
             .refreshable {
                 await syncNow()
@@ -324,8 +269,6 @@ struct ContentView: View {
             }
         }
     }
-    
-    // MARK: - Dynamic Gym Action Button Component
     
     @ViewBuilder
     private var gymActionButton: some View {
@@ -358,18 +301,21 @@ struct ContentView: View {
                 }
             }
         } else if gymTracker.hasCheckedOutToday {
-            VStack(spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text("Session Complete")
+            VStack(spacing: 4) {
+                Button {} label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Session Complete")
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: checkButtonsHeight)
                 }
-                .font(.subheadline)
-                .fontWeight(.semibold)
+                .buttonStyle(.borderedProminent)
+                .tint(.gray.opacity(0.3))
                 .foregroundStyle(.green)
-                .frame(maxWidth: .infinity)
-                .frame(height: checkButtonsHeight)
-                .background(Color.green.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .allowsHitTesting(false)
                 
                 if let inTime = gymTracker.lastCheckInDate?.formatted(date: .omitted, time: .shortened),
                    let outTime = gymTracker.lastCheckOutDate?.formatted(date: .omitted, time: .shortened) {
@@ -407,8 +353,6 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Helpers
-    
     private var statusColor: Color {
         switch network.connectionStatus {
         case .online: return .green
@@ -433,6 +377,14 @@ struct ContentView: View {
         }
     }
     
+    private var gateIconName: String {
+        switch network.isGateOpen {
+        case .some(true): return "lock.open.fill"
+        case .some(false): return "lock.fill"
+        case .none: return "questionmark.circle.fill"
+        }
+    }
+    
     private func timeString(from seconds: TimeInterval) -> String {
         let total = max(Int(seconds), 0)
         let minutes = total / 60
@@ -440,27 +392,30 @@ struct ContentView: View {
         return String(format: "%02d:%02d", minutes, seconds)
     }
     
-    // MARK: - Sync
-    
     private func syncNow() async {
-        lastSyncStatus = ""
-        
-        do {
-            let steps = try await healthKit.fetchTodaySteps()
-            healthKit.todaySteps = steps
+            lastSyncStatus = ""
             
-            gymTracker.loadTodayAccumulatedTime()
-            let gymSeconds = Int(gymTracker.totalSecondsToday)
-            
-            await leetCode.fetchTodaySolvedProblems()
-            
-            try await NetworkManager.shared.sendSync(
-                steps: steps,
-                gymSeconds: gymSeconds,
-                leetCodeSolved: leetCode.totalTodayCount
-            )
-        } catch {
-            lastSyncStatus = "Couldn't reach your gate device — \(error.localizedDescription)"
+            do {
+                // 1. Check the gate controller's online status via GET /status
+                await network.checkStatus()
+                
+                // 2. Fetch local metrics
+                let steps = try await healthKit.fetchTodaySteps()
+                healthKit.todaySteps = steps
+                
+                gymTracker.loadTodayAccumulatedTime()
+                let gymSeconds = Int(gymTracker.totalSecondsToday)
+                
+                await leetCode.fetchTodaySolvedProblems()
+                
+                // 3. Send metrics to update Internet Access status via POST /sync
+                try await NetworkManager.shared.sendSync(
+                    steps: steps,
+                    gymSeconds: gymSeconds,
+                    leetCodeSolved: leetCode.totalTodayCount
+                )
+            } catch {
+                lastSyncStatus = "Couldn't reach your gate device — \(error.localizedDescription)"
+            }
         }
-    }
 }

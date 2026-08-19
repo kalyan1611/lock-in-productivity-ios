@@ -17,7 +17,7 @@ final class LeetCodeManager: ObservableObject {
     @AppStorage("leetcodeUsername") var username: String = "kalyankumar239"
     
     // MARK: - Gate Target
-    let targetProblems: Int = 20
+    let targetProblems: Int = 10
     
     var totalTodayCount: Int {
         easyTodayCount + mediumTodayCount + hardTodayCount
