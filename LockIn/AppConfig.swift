@@ -4,6 +4,7 @@ import Foundation
 /// (a device, a service, a physical QR code) or that represents a
 /// tunable daily goal. Nothing behavioral lives here — just values.
 enum AppConfig {
+    
     // MARK: - ESP32 Gate Controller
 
     enum Gate {
@@ -13,10 +14,12 @@ enum AppConfig {
 
         /// Fallback key used only if no override is saved in UserDefaults
         /// under `esp32APIKeyDefaultsKey`. Treat as a placeholder, not a secret.
-        static let defaultAPIKey = "garmo9-syhgAv-mytxun"
+        static let defaultAPIKey = "n6i8pBuDSSknFddjiHnTkZq8ptSjJmVPQpDra0K6qu8pj2C6NTheNHl27AdRM1O0"
 
         static let statusPath = "/status"
         static let syncPath = "/sync"
+        static let waiveoffStatusPath = "/waiveoff/status"
+        static let waiveoffPath = "/waiveoff"
 
         static let requestTimeout: TimeInterval = 3
 
@@ -31,7 +34,7 @@ enum AppConfig {
     enum Gym {
         /// The physical QR code posted at the gym. Reprinting the code
         /// only requires updating this string.
-        static let expectedQRCode = "https://scan.page/Fkx8f4"
+        static let expectedQRCode = "Xhqz8fMwlEMcPmfiP9dP5MRz5yq3ArAQ67oKougs73jrDiJtNhw90JQ34AKnCPMe"
 
         static let targetDurationMinutes: Int = 45
         static let minimumRecordedSessionSeconds: TimeInterval = 60

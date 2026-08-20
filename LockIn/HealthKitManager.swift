@@ -21,6 +21,9 @@ final class HealthKitManager: ObservableObject {
     @Published var todaySteps: Int = 0
     @Published var targetSteps: Int = AppConfig.Steps.dailyTarget
     @Published var authorizationStatus: HKAuthorizationStatus = .notDetermined
+    
+    /// True once today's steps crosses targetSteps
+    @Published var areTodaysStepsCompleted = false
 
     private init() {}
 
@@ -101,6 +104,7 @@ final class HealthKitManager: ObservableObject {
         do {
             let steps = try await fetchTodaySteps()
             todaySteps = steps
+            areTodaysStepsCompleted = todaySteps >= targetSteps;
         } catch {
             print("Sync failed: \(error.localizedDescription)")
         }

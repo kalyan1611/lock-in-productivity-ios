@@ -29,7 +29,7 @@ final class GymTracker: ObservableObject {
     @Published var totalSecondsToday: TimeInterval = 0
 
     /// True once today's accumulated gym time reaches the target duration.
-    @Published var isGateUnlocked = false
+    @Published var isGymSessionCompleted = false
 
     /// Time the user checked in today. Persists (unlike `checkInDate`) after checkout,
     /// and only resets when a new day begins.
@@ -192,7 +192,7 @@ final class GymTracker: ObservableObject {
         }
 
         totalSecondsToday = storedSeconds + activeSession
-        isGateUnlocked = totalSecondsToday >= targetGymDurationSeconds
+        isGymSessionCompleted = totalSecondsToday >= targetGymDurationSeconds
     }
 
     // MARK: - Save Today's Time
@@ -201,7 +201,7 @@ final class GymTracker: ObservableObject {
         let todayKey = todayDateString()
         userDefaults.set(seconds, forKey: secondsKey + todayKey)
         totalSecondsToday = seconds
-        isGateUnlocked = seconds >= targetGymDurationSeconds
+        isGymSessionCompleted = seconds >= targetGymDurationSeconds
     }
 
     // MARK: - Date
