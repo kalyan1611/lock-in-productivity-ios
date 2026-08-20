@@ -269,7 +269,7 @@ struct ContentView: View {
                     } else {
                         gymTracker.checkIn()
                     }
-                }
+                }.ignoresSafeArea()
             }
         }
     }
