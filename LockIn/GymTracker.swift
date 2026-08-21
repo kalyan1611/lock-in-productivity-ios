@@ -54,6 +54,10 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     private let locationManager = CLLocationManager()
 
+    /// Bounds how long we wait for a fix accurate enough to trust before
+    /// falling back to whatever reading we have.
+    private var locationTimeoutTask: Task<Void, Never>?
+
     // MARK: - Persistence
 
     private let userDefaults = UserDefaults.standard
@@ -95,11 +99,19 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // MARK: - Manual Location Refresh (Pull-to-Refresh)
 
-    /// Requests a fast, accurate location fix by briefly starting updates
-    /// and stopping them as soon as a reliable coordinate is received.
+    /// Requests a location fix and keeps listening until either a fix
+    /// accurate enough to trust arrives, or `locationRefreshTimeout` elapses —
+    /// at which point we stop and use the best fix received so far.
     func refreshLocation() {
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.startUpdatingLocation()
+
+        locationTimeoutTask?.cancel()
+        locationTimeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(AppConfig.Gym.locationRefreshTimeout * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.locationManager.stopUpdatingLocation()
+        }
     }
 
     // MARK: - Live GPS Location Updates
@@ -108,10 +120,7 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         _ manager: CLLocationManager,
         didUpdateLocations locations: [CLLocation]
     ) {
-        guard let latestLocation = locations.last else { return }
-
-        // Stop updating immediately once we get a solid, accurate fix to save battery
-        manager.stopUpdatingLocation()
+        guard let latestLocation = locations.last, latestLocation.horizontalAccuracy >= 0 else { return }
 
         Task { @MainActor in
             let distance = latestLocation.distance(from: CLLocation(latitude: gymLatitude, longitude: gymLongitude))
@@ -120,6 +129,13 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
 
             self.distanceToGym = distance
             self.isInsideGeofence = (distance <= gymRadiusMeters)
+
+            // Keep listening for a better fix until accuracy is good enough to
+            // trust; the timeout above is the fallback if that never arrives.
+            if latestLocation.horizontalAccuracy <= AppConfig.Gym.desiredAccuracyMeters {
+                self.locationTimeoutTask?.cancel()
+                manager.stopUpdatingLocation()
+            }
         }
     }
 
@@ -268,6 +284,10 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
 
         totalSecondsToday = storedSeconds + activeSession
         isGymSessionCompleted = totalSecondsToday >= targetGymDurationSeconds
+
+        if isGymSessionCompleted {
+            StreakManager.shared.recordCompletion(for: .gym)
+        }
     }
 
     // MARK: - Save Today's Time
@@ -277,6 +297,10 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         userDefaults.set(seconds, forKey: secondsKey + todayKey)
         totalSecondsToday = seconds
         isGymSessionCompleted = seconds >= targetGymDurationSeconds
+
+        if isGymSessionCompleted {
+            StreakManager.shared.recordCompletion(for: .gym)
+        }
     }
 
     // MARK: - Date

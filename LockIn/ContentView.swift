@@ -4,6 +4,7 @@ struct ContentView: View {
     @StateObject private var healthKit = HealthKitManager.shared
     @StateObject private var network = NetworkManager.shared
     @StateObject private var leetCode = LeetCodeManager.shared
+    @StateObject private var streaks = StreakManager.shared
     @ObservedObject private var gymTracker = GymTracker.shared
 
     @State private var lastSyncStatus: String = ""
@@ -97,6 +98,8 @@ struct ContentView: View {
                     waiveOffBadge(remaining: status.stepsRemaining, waivedToday: status.stepsWaivedToday, type: .steps)
                 }
 
+                streakBadge(for: .steps)
+
                 Image(systemName: isGoalCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
                     .foregroundStyle(isGoalCompleted ? .green : .secondary)
@@ -128,6 +131,7 @@ struct ContentView: View {
         .padding(.vertical, 2)
     }
 
+    @ViewBuilder
     private var gymStatusRow: some View {
         HStack(spacing: 6) {
             locationLabel
@@ -194,6 +198,8 @@ struct ContentView: View {
                 if !isGoalCompleted, let status = network.waiveOffStatus {
                     waiveOffBadge(remaining: status.gymRemaining, waivedToday: status.gymWaivedToday, type: .gym)
                 }
+
+                streakBadge(for: .gym)
 
                 Image(systemName: isGoalCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
@@ -323,6 +329,8 @@ struct ContentView: View {
             if !isGoalCompleted, let status = network.waiveOffStatus {
                 waiveOffBadge(remaining: status.leetcodeRemaining, waivedToday: status.leetcodeWaivedToday, type: .leetcode)
             }
+
+            streakBadge(for: .leetcode)
 
             if leetCode.isLoading {
                 ProgressView()
@@ -464,6 +472,25 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .disabled(remaining <= 0)
             .foregroundStyle(remaining > 0 ? .blue : .secondary)
+        }
+    }
+
+    // MARK: - Streak Badge
+
+    @ViewBuilder
+    private func streakBadge(for category: StreakManager.Category) -> some View {
+        let current = streaks.currentStreak(for: category)
+        if current > 0 {
+            HStack(spacing: 3) {
+                Text("🔥")
+                Text("\(current)")
+                    .fontWeight(.bold)
+            }
+            .font(.caption)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.orange.opacity(0.12))
+            .clipShape(Capsule())
         }
     }
 

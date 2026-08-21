@@ -105,6 +105,10 @@ final class HealthKitManager: ObservableObject {
             let steps = try await fetchTodaySteps()
             todaySteps = steps
             areTodaysStepsCompleted = todaySteps >= targetSteps
+
+            if areTodaysStepsCompleted {
+                StreakManager.shared.recordCompletion(for: .steps)
+            }
         } catch {
             print("Sync failed: \(error.localizedDescription)")
         }

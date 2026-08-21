@@ -32,16 +32,23 @@ enum AppConfig {
     // MARK: - Gym
 
     enum Gym {
-        // GPS coordinates of the gym. Check-in/check-out is only allowed
-        // while the device is within `radiusMeters` of this point.
-        //
-
-        // gym coordinates
+        /// GPS coordinates of the gym. Check-in/check-out is only allowed
+        /// while the device is within `radiusMeters` of this point.
         static let latitude: CLLocationDegrees = 17.38099
         static let longitude: CLLocationDegrees = 78.36278
 
         /// How close (in meters) the device needs to be to count as "at the gym".
-        static let radiusMeters: CLLocationDistance = 50
+        /// Sized at roughly 2-3x observed real-world fix accuracy (~20m) at this
+        /// location, with margin for an occasional worse fix.
+        static let radiusMeters: CLLocationDistance = 55
+
+        /// A location fix is trusted once its horizontalAccuracy is at or
+        /// under this value. Until then we keep listening for a better fix.
+        static let desiredAccuracyMeters: CLLocationAccuracy = 65
+
+        /// Max time to wait for a fix accurate enough to trust before falling
+        /// back to whatever reading we have.
+        static let locationRefreshTimeout: TimeInterval = 8
 
         static let targetDurationMinutes: Int = 45
         static let minimumRecordedSessionSeconds: TimeInterval = 60
@@ -78,5 +85,9 @@ enum AppConfig {
         static let gymLastCheckOutDate = "LockIn_LastCheckOutDate"
         static let gymLastCheckInTime = "LockIn_LastCheckInTime"
         static let gymLastCheckOutTime = "LockIn_LastCheckOutTime"
+
+        static let streakCurrentPrefix = "LockIn_Streak_Current_"
+        static let streakBestPrefix = "LockIn_Streak_Best_"
+        static let streakLastDatePrefix = "LockIn_Streak_LastDate_"
     }
 }

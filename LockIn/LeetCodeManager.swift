@@ -90,6 +90,10 @@ final class LeetCodeManager: ObservableObject {
             hardTodayCount = hard
             lastUpdated = Date()
             isLoading = false
+
+            if isGoalMet {
+                StreakManager.shared.recordCompletion(for: .leetcode)
+            }
         } catch {
             errorMessage = "Failed to update LeetCode data"
             isLoading = false
