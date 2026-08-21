@@ -61,7 +61,7 @@ final class LeetCodeManager: ObservableObject {
             }
 
             // Deduplicate unique solved problems today
-            let uniqueSlugs = Array(Set(todaySubmissions.map { $0.titleSlug }))
+            let uniqueSlugs = Array(Set(todaySubmissions.map(\.titleSlug)))
 
             // 3. Concurrently fetch difficulty for today's unique problems
             var easy = 0

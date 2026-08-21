@@ -20,11 +20,11 @@ struct ContentView: View {
 
     private var gymStatusText: String {
         if gymTracker.isCheckedIn {
-            return "Session in Progress"
+            "Session in Progress"
         } else if gymTracker.hasCheckedOutToday {
-            return "Session Completed"
+            "Session Completed"
         } else {
-            return "Not Checked In"
+            "Not Checked In"
         }
     }
 
@@ -62,7 +62,11 @@ struct ContentView: View {
             }
             .alert("Use a waive-off?", isPresented: Binding(
                 get: { waiveOffAlertType != nil },
-                set: { if !$0 { waiveOffAlertType = nil } }
+                set: {
+                    if !$0 {
+                        waiveOffAlertType = nil
+                    }
+                }
             )) {
                 Button("Cancel", role: .cancel) { waiveOffAlertType = nil }
                 Button("Confirm", role: .destructive) {
@@ -82,7 +86,11 @@ struct ContentView: View {
             }
             .alert("Couldn't use waive-off", isPresented: Binding(
                 get: { waiveOffError != nil },
-                set: { if !$0 { waiveOffError = nil } }
+                set: {
+                    if !$0 {
+                        waiveOffError = nil
+                    }
+                }
             )) {
                 Button("OK", role: .cancel) { waiveOffError = nil }
             } message: {
@@ -103,7 +111,7 @@ struct ContentView: View {
                     .bold()
 
                 Spacer()
-                
+
                 if !isGoalCompleted, let status = network.waiveOffStatus {
                     waiveOffBadge(remaining: status.stepsRemaining, waivedToday: status.stepsWaivedToday, type: .steps)
                 }
@@ -130,7 +138,6 @@ struct ContentView: View {
 
     // MARK: - 2. Gym Card
 
-    @ViewBuilder
     private var gymCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             gymHeaderRow
@@ -172,7 +179,7 @@ struct ContentView: View {
                 if !isGoalCompleted, let status = network.waiveOffStatus {
                     waiveOffBadge(remaining: status.gymRemaining, waivedToday: status.gymWaivedToday, type: .gym)
                 }
-                
+
                 Image(systemName: isGoalCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
                     .foregroundStyle(isGoalCompleted ? .green : .secondary)
@@ -180,7 +187,6 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder
     private var gymProgressRow: some View {
         HStack {
             if !gymTracker.hasCheckedOutToday {
@@ -287,7 +293,6 @@ struct ContentView: View {
 
     // MARK: - 3. LeetCode Card
 
-    @ViewBuilder
     private var leetCodeCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             leetCodeHeaderRow
@@ -312,7 +317,7 @@ struct ContentView: View {
                 .bold()
 
             Spacer()
-            
+
             if !isGoalCompleted, let status = network.waiveOffStatus {
                 waiveOffBadge(remaining: status.leetcodeRemaining, waivedToday: status.leetcodeWaivedToday, type: .leetcode)
             }
@@ -328,7 +333,6 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder
     private var leetCodeCountRow: some View {
         HStack(alignment: .firstTextBaseline) {
             Text("\(leetCode.totalTodayCount)")
@@ -343,7 +347,6 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder
     private var leetCodeDifficultyBreakdown: some View {
         HStack {
             leetCodeDifficultyColumn(label: "EASY", count: leetCode.easyTodayCount, color: .green)
@@ -360,7 +363,6 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder
     private func leetCodeDifficultyColumn(label: String, count: Int, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(label)
@@ -377,7 +379,6 @@ struct ContentView: View {
 
     // MARK: - 4. Device Status Card
 
-    @ViewBuilder
     private var deviceStatusCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -468,33 +469,33 @@ struct ContentView: View {
 
     private var statusColor: Color {
         switch network.connectionStatus {
-        case .online: return .green
-        case .offline: return .red
-        case .unknown: return .orange
+        case .online: .green
+        case .offline: .red
+        case .unknown: .orange
         }
     }
 
     private var statusLabel: String {
         switch network.connectionStatus {
-        case .online: return "Online"
-        case .offline: return "Offline"
-        case .unknown: return "Checking…"
+        case .online: "Online"
+        case .offline: "Offline"
+        case .unknown: "Checking…"
         }
     }
 
     private var internetStatus: (label: String, color: Color) {
         switch network.isGateOpen {
-        case .some(true): return ("Full Access", .green)
-        case .some(false): return ("Restricted", .red)
-        case .none: return ("Unknown", .orange)
+        case .some(true): ("Full Access", .green)
+        case .some(false): ("Restricted", .red)
+        case .none: ("Unknown", .orange)
         }
     }
 
     private var gateIconName: String {
         switch network.isGateOpen {
-        case .some(true): return "lock.open.fill"
-        case .some(false): return "lock.fill"
-        case .none: return "questionmark.circle.fill"
+        case .some(true): "lock.open.fill"
+        case .some(false): "lock.fill"
+        case .none: "questionmark.circle.fill"
         }
     }
 

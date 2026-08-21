@@ -6,7 +6,7 @@ enum HealthKitError: Error, LocalizedError {
     case notAvailable
     var errorDescription: String? {
         switch self {
-        case .notAvailable: return "HealthKit is not available on this device"
+        case .notAvailable: "HealthKit is not available on this device"
         }
     }
 }
@@ -21,7 +21,7 @@ final class HealthKitManager: ObservableObject {
     @Published var todaySteps: Int = 0
     @Published var targetSteps: Int = AppConfig.Steps.dailyTarget
     @Published var authorizationStatus: HKAuthorizationStatus = .notDetermined
-    
+
     /// True once today's steps crosses targetSteps
     @Published var areTodaysStepsCompleted = false
 
@@ -55,10 +55,10 @@ final class HealthKitManager: ObservableObject {
                 quantitySamplePredicate: predicate,
                 options: .cumulativeSum
             ) { _, result, error in
-                if let error = error {
+                if let error {
                     let nsError = error as NSError
                     // Handle "No data available for the specified predicate" (HKError.errorNoData)
-                    if nsError.domain == HKErrorDomain && nsError.code == HKError.errorNoData.rawValue {
+                    if nsError.domain == HKErrorDomain, nsError.code == HKError.errorNoData.rawValue {
                         continuation.resume(returning: 0)
                         return
                     }
@@ -76,7 +76,7 @@ final class HealthKitManager: ObservableObject {
     /// Registers for background delivery and syncs when steps update.
     func enableBackgroundDelivery() {
         healthStore.enableBackgroundDelivery(for: stepType, frequency: .immediate) { success, error in
-            if let error = error {
+            if let error {
                 print("enableBackgroundDelivery failed: \(error)")
             } else {
                 print("enableBackgroundDelivery success: \(success)")
@@ -104,7 +104,7 @@ final class HealthKitManager: ObservableObject {
         do {
             let steps = try await fetchTodaySteps()
             todaySteps = steps
-            areTodaysStepsCompleted = todaySteps >= targetSteps;
+            areTodaysStepsCompleted = todaySteps >= targetSteps
         } catch {
             print("Sync failed: \(error.localizedDescription)")
         }

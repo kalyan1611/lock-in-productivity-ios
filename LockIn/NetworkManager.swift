@@ -13,7 +13,7 @@ final class NetworkManager: ObservableObject {
 
     private let esp32BaseURL = AppConfig.Gate.baseURL
     private var apiKey: String {
-        return UserDefaults.standard.string(forKey: AppConfig.DefaultsKey.esp32APIKeyOverride)
+        UserDefaults.standard.string(forKey: AppConfig.DefaultsKey.esp32APIKeyOverride)
             ?? AppConfig.Gate.defaultAPIKey
     }
 
@@ -27,9 +27,9 @@ final class NetworkManager: ObservableObject {
     @Published var stepGoalMet: Bool?
     @Published var gymGoalMet: Bool?
     @Published var leetCodeGoalMet: Bool?
-    
+
     enum WaiveOffType: String { case gym, steps, leetcode }
-    
+
     struct WaiveOffStatus: Decodable {
         let gymRemaining: Int
         let stepsRemaining: Int
@@ -133,7 +133,7 @@ final class NetworkManager: ObservableObject {
         }
         lastCheckedAt = Date()
     }
-    
+
     @MainActor
     func fetchWaiveOffStatus() async {
         guard let url = URL(string: esp32BaseURL + AppConfig.Gate.waiveoffStatusPath) else {
@@ -153,7 +153,7 @@ final class NetworkManager: ObservableObject {
                 return
             }
 
-            guard (200...299).contains(http.statusCode) else {
+            guard (200 ... 299).contains(http.statusCode) else {
                 waiveOffFetchError = "Gate controller returned HTTP \(http.statusCode) — is the firmware updated?"
                 return
             }
@@ -190,7 +190,7 @@ final class NetworkManager: ObservableObject {
             let msg = (try? JSONDecoder().decode([String: String].self, from: data))?["error"] ?? "Waive-off unavailable"
             throw SyncError(message: msg)
         }
-        guard (200...299).contains(http.statusCode) else {
+        guard (200 ... 299).contains(http.statusCode) else {
             throw SyncError(message: "ESP32 returned a non-success status")
         }
         let status = try JSONDecoder().decode(WaiveOffStatus.self, from: data)

@@ -206,7 +206,7 @@ class QRScannerController: UIViewController, AVCaptureMetadataOutputObjectsDeleg
                 AudioServicesPlaySystemSound(SystemSoundID(1053)) // Error / beep sound cue
 
                 DispatchQueue.main.async { [weak self] in
-                    guard let self = self else { return }
+                    guard let self else { return }
                     UIView.animate(withDuration: 0.2, animations: {
                         self.errorBackdrop.alpha = 1
                         self.setCornerColor(.systemRed)
@@ -227,7 +227,7 @@ class QRScannerController: UIViewController, AVCaptureMetadataOutputObjectsDeleg
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        if let previewLayer = previewLayer {
+        if let previewLayer {
             previewLayer.frame = view.layer.bounds
         }
         applyOverlayMask()

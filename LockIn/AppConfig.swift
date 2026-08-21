@@ -4,7 +4,6 @@ import Foundation
 /// (a device, a service, a physical QR code) or that represents a
 /// tunable daily goal. Nothing behavioral lives here — just values.
 enum AppConfig {
-    
     // MARK: - ESP32 Gate Controller
 
     enum Gate {
