@@ -21,7 +21,7 @@ enum AppConfig {
         static let waiveoffStatusPath = "/waiveoff/status"
         static let waiveoffPath = "/waiveoff"
 
-        static let requestTimeout: TimeInterval = 3
+        static let requestTimeout: TimeInterval = 1
 
         enum Method {
             static let get = "GET"
