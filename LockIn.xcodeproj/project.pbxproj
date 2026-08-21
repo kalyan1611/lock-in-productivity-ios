@@ -273,7 +273,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = LockIn/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = LockIn;
-				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to scan the gym check-in and check-out QR code.";
 				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "Used to sync your step count to your ESP32 system";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "This app reads your step count to enforce your daily productivity goal.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "This app uses HealthKit data to manage your productivity goals.";
@@ -320,7 +319,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = LockIn/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = LockIn;
-				INFOPLIST_KEY_NSCameraUsageDescription = "We need access to your camera to scan the gym check-in and check-out QR code.";
 				INFOPLIST_KEY_NSHealthClinicalHealthRecordsShareUsageDescription = "Used to sync your step count to your ESP32 system";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "This app reads your step count to enforce your daily productivity goal.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "This app uses HealthKit data to manage your productivity goals.";

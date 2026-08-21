@@ -7,8 +7,6 @@ struct ContentView: View {
     @ObservedObject private var gymTracker = GymTracker.shared
 
     @State private var lastSyncStatus: String = ""
-    @State private var showingQRScanner = false
-    @State private var isCheckingOut = false
 
     // MARK: - Waive-off UI state
 
@@ -16,17 +14,6 @@ struct ContentView: View {
     @State private var waiveOffError: String?
 
     private var checkButtonsHeight: CGFloat = 38
-    private var gymQR = AppConfig.Gym.expectedQRCode
-
-    private var gymStatusText: String {
-        if gymTracker.isCheckedIn {
-            "Session in Progress"
-        } else if gymTracker.hasCheckedOutToday {
-            "Session Completed"
-        } else {
-            "Not Checked In"
-        }
-    }
 
     // MARK: - Body
 
@@ -51,14 +38,8 @@ struct ContentView: View {
             .refreshable {
                 await syncNow()
             }
-            .sheet(isPresented: $showingQRScanner) {
-                QRCodeScannerView(expectedCode: gymQR) {
-                    if isCheckingOut {
-                        gymTracker.checkOut()
-                    } else {
-                        gymTracker.checkIn()
-                    }
-                }.ignoresSafeArea()
+            .onAppear {
+                gymTracker.requestLocationPermissionIfNeeded()
             }
             .alert("Use a waive-off?", isPresented: Binding(
                 get: { waiveOffAlertType != nil },
@@ -141,10 +122,44 @@ struct ContentView: View {
     private var gymCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             gymHeaderRow
-            gymProgressRow
+            gymStatusRow
             gymActionButton
         }
         .padding(.vertical, 2)
+    }
+
+    private var gymStatusRow: some View {
+        HStack(spacing: 6) {
+            locationLabel
+                .foregroundStyle(gymTracker.isInsideGeofence ? .green : .secondary)
+
+            Spacer()
+
+            if !gymTracker.hasCheckedOutToday {
+                let minutesToday = Int(gymTracker.totalSecondsToday / 60)
+                let targetMinutes = gymTracker.targetGymDurationMinutes
+
+                Text("\(minutesToday)/\(targetMinutes) mins")
+                    .bold()
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.caption)
+    }
+
+    @ViewBuilder
+    private var locationLabel: some View {
+        if gymTracker.isInsideGeofence {
+            Label("Inside gym zone", systemImage: "location.fill")
+        } else if let distance = gymTracker.distanceToGym {
+            let formattedDistance = distance >= 1000
+                ? String(format: "%.1f km away", distance / 1000)
+                : String(format: "%.0f m away", distance)
+
+            Label(formattedDistance, systemImage: "location")
+        } else {
+            Label("Location unknown", systemImage: "location.slash")
+        }
     }
 
     @ViewBuilder
@@ -187,26 +202,6 @@ struct ContentView: View {
         }
     }
 
-    private var gymProgressRow: some View {
-        HStack {
-            if !gymTracker.hasCheckedOutToday {
-                Text(gymStatusText)
-                    .font(.caption)
-                    .foregroundStyle(gymTracker.isCheckedIn ? .green : .secondary)
-
-                Spacer()
-
-                let minutesToday = Int(gymTracker.totalSecondsToday / 60)
-                let targetMinutes = gymTracker.targetGymDurationMinutes
-
-                Text("\(minutesToday)/\(targetMinutes) mins")
-                    .font(.caption)
-                    .bold()
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
     @ViewBuilder
     private var gymActionButton: some View {
         if gymTracker.isCheckedIn, let checkInDate = gymTracker.checkInDate {
@@ -214,10 +209,11 @@ struct ContentView: View {
                 let elapsed = context.date.timeIntervalSince(checkInDate)
                 let canCheckOut = elapsed >= gymTracker.targetGymDurationSeconds
 
+                let readyToCheckOut = canCheckOut && gymTracker.isInsideGeofence
+
                 VStack(spacing: 4) {
                     Button {
-                        isCheckingOut = true
-                        showingQRScanner = true
+                        gymTracker.checkOut()
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "figure.walk.departure")
@@ -229,12 +225,18 @@ struct ContentView: View {
                         .frame(height: checkButtonsHeight)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(canCheckOut ? .red : .gray)
-                    .disabled(!canCheckOut)
+                    .tint(readyToCheckOut ? .red : .gray)
+                    .disabled(!readyToCheckOut)
 
-                    Text(canCheckOut ? "Target reached • Ready to check out" : "Minimum duration required")
-                        .font(.caption2)
-                        .foregroundStyle(canCheckOut ? .green : .secondary)
+                    Text(
+                        !canCheckOut
+                            ? "Minimum duration required"
+                            : gymTracker.isInsideGeofence
+                            ? "Target reached • Ready to check out"
+                            : "Return to gym zone to check out"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(readyToCheckOut ? .green : .secondary)
                 }
             }
         } else if gymTracker.hasCheckedOutToday {
@@ -269,8 +271,7 @@ struct ContentView: View {
         } else {
             VStack(spacing: 4) {
                 Button {
-                    isCheckingOut = false
-                    showingQRScanner = true
+                    gymTracker.checkIn()
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "figure.strengthtraining.traditional")
@@ -283,8 +284,9 @@ struct ContentView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
+                .disabled(!gymTracker.isInsideGeofence)
 
-                Text("Scan QR code to start session")
+                Text(gymTracker.isInsideGeofence ? "Ready to check in" : "Enter gym zone to check in")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -512,10 +514,13 @@ struct ContentView: View {
         lastSyncStatus = ""
 
         do {
-            // 1. Check the gate controller's online status via GET /status
+            // 1. Refresh location so isInsideGeofence reflects the current position
+            gymTracker.refreshLocation()
+
+            // 2. Check the gate controller's online status via GET /status
             await network.checkStatus()
 
-            // 2. Fetch local metrics
+            // 3. Fetch local metrics
             await healthKit.syncSteps()
             let steps = healthKit.todaySteps
 
@@ -524,14 +529,14 @@ struct ContentView: View {
 
             await leetCode.fetchTodaySolvedProblems()
 
-            // 3. Send metrics to update Internet Access status via POST /sync
+            // 4. Send metrics to update Internet Access status via POST /sync
             try await NetworkManager.shared.sendSync(
                 steps: steps,
                 gymSeconds: gymSeconds,
                 leetCodeSolved: leetCode.totalTodayCount
             )
 
-            // 4. Refresh waive-off balances (in case the ESP32 rolled over a new week)
+            // 5. Refresh waive-off balances (in case the ESP32 rolled over a new week)
             await network.fetchWaiveOffStatus()
 //            print("waiveOffStatus:", network.waiveOffStatus as Any)
 //            print("waiveOffFetchError:", network.waiveOffFetchError as Any)
