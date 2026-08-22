@@ -6,6 +6,8 @@ struct ContentView: View {
     @StateObject private var leetCode = LeetCodeManager.shared
     @ObservedObject private var gymTracker = GymTracker.shared
 
+    @Environment(\.scenePhase) private var scenePhase
+
     @State private var lastSyncStatus: String = ""
 
     // MARK: - Waive-off UI state
@@ -31,12 +33,15 @@ struct ContentView: View {
             .navigationTitle("LockIn")
             .navigationBarTitleDisplayMode(.inline)
             .task {
-                await leetCode.fetchTodaySolvedProblems()
-                await network.checkStatus()
-                await network.fetchWaiveOffStatus()
+                await syncNow()
             }
             .refreshable {
                 await syncNow()
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    Task { await syncNow() }
+                }
             }
             .onAppear {
                 gymTracker.requestLocationPermissionIfNeeded()
@@ -419,12 +424,8 @@ struct ContentView: View {
 
     @ViewBuilder
     private var deviceStatusFooter: some View {
-        if !lastSyncStatus.isEmpty {
-            Text(lastSyncStatus)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        } else if network.waiveOffStatus == nil, let waiveOffError = network.waiveOffFetchError {
-            Text(waiveOffError)
+        if let message = networkErrorMessage {
+            Text(message)
                 .font(.caption2)
                 .foregroundStyle(.orange)
         } else if let lastChecked = network.lastCheckedAt {
@@ -521,6 +522,18 @@ struct ContentView: View {
     }
 
     // MARK: - Derived Status
+
+    /// Single source of truth for the error line under Device Status.
+    /// Every network path — gate sync, waive-off fetch, LeetCode fetch —
+    /// funnels through here so there's one place, one message, one color.
+    private var networkErrorMessage: String? {
+        if !lastSyncStatus.isEmpty { return lastSyncStatus }
+        if network.waiveOffStatus == nil, let waiveOffError = network.waiveOffFetchError {
+            return waiveOffError
+        }
+        if let leetCodeError = leetCode.errorMessage { return leetCodeError }
+        return nil
+    }
 
     private var statusColor: Color {
         switch network.connectionStatus {
