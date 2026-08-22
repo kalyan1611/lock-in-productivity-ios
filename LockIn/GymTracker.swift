@@ -53,6 +53,10 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     // MARK: - Location
 
     private let locationManager = CLLocationManager()
+    private let desiredHorizontalAccuracy: CLLocationAccuracy = 20
+    private let locationRefreshTimeoutSeconds: UInt64 = 15
+    private var locationRefreshTimeoutTask: Task<Void, Never>?
+    private var bestLocationSoFar: CLLocation?
 
     // MARK: - Persistence
 
@@ -95,11 +99,24 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // MARK: - Manual Location Refresh (Pull-to-Refresh)
 
-    /// Requests a fast, accurate location fix by briefly starting updates
-    /// and stopping them as soon as a reliable coordinate is received.
+    /// Requests an accurate location fix by starting continuous updates and
+    /// waiting until horizontal accuracy is under `desiredHorizontalAccuracy`,
+    /// or until the safety timeout elapses (whichever comes first).
     func refreshLocation() {
+        bestLocationSoFar = nil
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
         locationManager.startUpdatingLocation()
+
+        locationRefreshTimeoutTask?.cancel()
+        locationRefreshTimeoutTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: self.locationRefreshTimeoutSeconds * 1_000_000_000)
+            guard !Task.isCancelled else { return }
+
+            print("Location refresh timed out after \(self.locationRefreshTimeoutSeconds)s — using best fix so far")
+            self.locationManager.stopUpdatingLocation()
+            self.applyBestFixIfNeeded()
+        }
     }
 
     // MARK: - Live GPS Location Updates
@@ -109,18 +126,41 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         didUpdateLocations locations: [CLLocation]
     ) {
         guard let latestLocation = locations.last else { return }
-
-        // Stop updating immediately once we get a solid, accurate fix to save battery
-        manager.stopUpdatingLocation()
+        guard latestLocation.horizontalAccuracy > 0 else { return } // negative = invalid fix
 
         Task { @MainActor in
+            // Track the most accurate fix we've seen, in case we time out before hitting target accuracy
+            if self.bestLocationSoFar == nil ||
+                latestLocation.horizontalAccuracy < self.bestLocationSoFar!.horizontalAccuracy {
+                self.bestLocationSoFar = latestLocation
+            }
+
             let distance = latestLocation.distance(from: CLLocation(latitude: gymLatitude, longitude: gymLongitude))
 
-            print("Accurate distance to gym: \(distance)m (Accuracy: \(latestLocation.horizontalAccuracy)m) — current location: \(latestLocation.coordinate.latitude), \(latestLocation.coordinate.longitude)")
+            print("Distance to gym: \(distance)m (accuracy: \(latestLocation.horizontalAccuracy)m) — current location: \(latestLocation.coordinate.latitude), \(latestLocation.coordinate.longitude)")
 
             self.distanceToGym = distance
             self.isInsideGeofence = (distance <= gymRadiusMeters)
+
+            // Stop only once we've got a fix accurate enough to trust
+            if latestLocation.horizontalAccuracy <= desiredHorizontalAccuracy {
+                manager.stopUpdatingLocation()
+                self.locationRefreshTimeoutTask?.cancel()
+                self.locationRefreshTimeoutTask = nil
+            }
         }
+    }
+
+    /// Called when the safety timeout fires before we reached target accuracy.
+    /// Applies the best fix we managed to get, so state isn't left stale.
+    private func applyBestFixIfNeeded() {
+        guard let best = bestLocationSoFar else { return }
+
+        let distance = best.distance(from: CLLocation(latitude: gymLatitude, longitude: gymLongitude))
+        distanceToGym = distance
+        isInsideGeofence = (distance <= gymRadiusMeters)
+
+        print("Best available fix: \(distance)m (accuracy: \(best.horizontalAccuracy)m)")
     }
 
     nonisolated func locationManager(
