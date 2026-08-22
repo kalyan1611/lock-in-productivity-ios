@@ -78,5 +78,10 @@ enum AppConfig {
         static let gymLastCheckOutDate = "LockIn_LastCheckOutDate"
         static let gymLastCheckInTime = "LockIn_LastCheckInTime"
         static let gymLastCheckOutTime = "LockIn_LastCheckOutTime"
+
+        /// Last-known waive-off status, cached so the UI has something
+        /// sane to show before the first successful fetch of a session
+        /// and while offline.
+        static let waiveOffStatusCache = "LockIn_WaiveOffStatusCache"
     }
 }

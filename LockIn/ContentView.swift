@@ -63,7 +63,7 @@ struct ContentView: View {
                     }
                 }
             } message: {
-                Text("This uses one of your limited weekly waive-off cards for today.")
+                Text(waiveOffAlertMessage(for: waiveOffAlertType))
             }
             .alert("Couldn't use waive-off", isPresented: Binding(
                 get: { waiveOffError != nil },
@@ -436,6 +436,42 @@ struct ContentView: View {
             .font(.caption)
             .foregroundStyle(.tertiary)
         }
+    }
+
+    // MARK: - Waive-off Alert Message
+
+    /// Percent complete (0–100, clamped) for a given goal type, based on the
+    /// same live values already shown on each card.
+    private func waiveOffProgressPercent(for type: NetworkManager.WaiveOffType) -> Int {
+        let fraction: Double
+        switch type {
+        case .steps:
+            fraction = healthKit.targetSteps > 0
+                ? Double(healthKit.todaySteps) / Double(healthKit.targetSteps)
+                : 0
+        case .gym:
+            fraction = gymTracker.targetGymDurationSeconds > 0
+                ? gymTracker.totalSecondsToday / gymTracker.targetGymDurationSeconds
+                : 0
+        case .leetcode:
+            fraction = leetCode.targetProblems > 0
+                ? Double(leetCode.totalTodayCount) / Double(leetCode.targetProblems)
+                : 0
+        }
+        return min(max(Int((fraction * 100).rounded(.down)), 0), 100)
+    }
+
+    /// Builds the confirmation message for the "Use a waive-off?" alert.
+    /// Leads with a progress callout — only when the goal is already at
+    /// least halfway done — followed by the standard cost-of-claiming line.
+    private func waiveOffAlertMessage(for type: NetworkManager.WaiveOffType?) -> String {
+        let baseMessage = "This uses one of your limited weekly waive-off cards for today."
+        guard let type else { return baseMessage }
+
+        let percent = waiveOffProgressPercent(for: type)
+        guard percent >= 50 else { return baseMessage }
+
+        return "You're already \(percent)% of the way there — you may not need it. \(baseMessage)"
     }
 
     // MARK: - Waive-off Badge

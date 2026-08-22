@@ -3,7 +3,10 @@ import Foundation
 
 final class NetworkManager: ObservableObject {
     static let shared = NetworkManager()
-    private init() {}
+
+    private init() {
+        waiveOffStatus = Self.loadCachedWaiveOffStatus()
+    }
 
     enum ConnectionStatus {
         case unknown
@@ -30,7 +33,7 @@ final class NetworkManager: ObservableObject {
 
     enum WaiveOffType: String { case gym, steps, leetcode }
 
-    struct WaiveOffStatus: Decodable {
+    struct WaiveOffStatus: Codable {
         let gymRemaining: Int
         let stepsRemaining: Int
         let leetcodeRemaining: Int
@@ -40,8 +43,58 @@ final class NetworkManager: ObservableObject {
         let weekStart: String
     }
 
-    @Published var waiveOffStatus: WaiveOffStatus?
+    /// Backing store for `waiveOffStatus`. Every successful assignment is
+    /// mirrored to UserDefaults; nothing is ever cleared just because a
+    /// network call failed, so the UI keeps showing the last known-good
+    /// state while offline.
+    @Published var waiveOffStatus: WaiveOffStatus? {
+        didSet {
+            guard let waiveOffStatus else { return }
+            Self.cacheWaiveOffStatus(waiveOffStatus)
+        }
+    }
+
     @Published var waiveOffFetchError: String?
+
+    private static let waiveOffCacheKey = AppConfig.DefaultsKey.waiveOffStatusCache
+
+    /// Wraps a cached status with the calendar day it was written on, so a
+    /// stale cache from a previous day doesn't masquerade as "today."
+    private struct CachedWaiveOffStatus: Codable {
+        let status: WaiveOffStatus
+        let cachedAt: Date
+    }
+
+    private static func loadCachedWaiveOffStatus() -> WaiveOffStatus? {
+        guard let data = UserDefaults.standard.data(forKey: waiveOffCacheKey),
+              let cached = try? JSONDecoder().decode(CachedWaiveOffStatus.self, from: data)
+        else {
+            return nil
+        }
+
+        guard Calendar.current.isDateInToday(cached.cachedAt) else {
+            // The cache is from a previous day. "Waived today" no longer means
+            // anything, so don't show it as still active — but the weekly
+            // remaining counts are still our best guess until the next sync.
+            return WaiveOffStatus(
+                gymRemaining: cached.status.gymRemaining,
+                stepsRemaining: cached.status.stepsRemaining,
+                leetcodeRemaining: cached.status.leetcodeRemaining,
+                gymWaivedToday: false,
+                stepsWaivedToday: false,
+                leetcodeWaivedToday: false,
+                weekStart: cached.status.weekStart
+            )
+        }
+
+        return cached.status
+    }
+
+    private static func cacheWaiveOffStatus(_ status: WaiveOffStatus) {
+        let wrapped = CachedWaiveOffStatus(status: status, cachedAt: Date())
+        guard let data = try? JSONEncoder().encode(wrapped) else { return }
+        UserDefaults.standard.set(data, forKey: waiveOffCacheKey)
+    }
 
     struct SyncError: Error, LocalizedError {
         let message: String
@@ -159,6 +212,8 @@ final class NetworkManager: ObservableObject {
             }
 
             do {
+                // Only overwrite on a successful decode. Any earlier value
+                // (from this session or the on-disk cache) stays put on failure.
                 waiveOffStatus = try JSONDecoder().decode(WaiveOffStatus.self, from: data)
                 waiveOffFetchError = nil
             } catch {
