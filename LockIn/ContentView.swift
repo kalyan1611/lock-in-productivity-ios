@@ -93,13 +93,13 @@ struct ContentView: View {
 
                 Spacer()
 
-                if !isGoalCompleted, let status = network.waiveOffStatus {
-                    waiveOffBadge(remaining: status.stepsRemaining, waivedToday: status.stepsWaivedToday, type: .steps)
+                let stepsWaived = network.waiveOffStatus?.stepsWaivedToday ?? false
+
+                if !isGoalCompleted, !stepsWaived, let status = network.waiveOffStatus {
+                    waiveOffBadge(remaining: status.stepsRemaining, type: .steps)
                 }
 
-                Image(systemName: isGoalCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isGoalCompleted ? .green : .secondary)
+                goalStatusIcon(isCompleted: isGoalCompleted, waivedToday: stepsWaived)
             }
 
             HStack(alignment: .firstTextBaseline) {
@@ -191,13 +191,13 @@ struct ContentView: View {
                     .clipShape(Capsule())
                 }
             } else {
-                if !isGoalCompleted, let status = network.waiveOffStatus {
-                    waiveOffBadge(remaining: status.gymRemaining, waivedToday: status.gymWaivedToday, type: .gym)
+                let gymWaived = network.waiveOffStatus?.gymWaivedToday ?? false
+
+                if !isGoalCompleted, !gymWaived, let status = network.waiveOffStatus {
+                    waiveOffBadge(remaining: status.gymRemaining, type: .gym)
                 }
 
-                Image(systemName: isGoalCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isGoalCompleted ? .green : .secondary)
+                goalStatusIcon(isCompleted: isGoalCompleted, waivedToday: gymWaived)
             }
         }
     }
@@ -320,17 +320,17 @@ struct ContentView: View {
 
             Spacer()
 
-            if !isGoalCompleted, let status = network.waiveOffStatus {
-                waiveOffBadge(remaining: status.leetcodeRemaining, waivedToday: status.leetcodeWaivedToday, type: .leetcode)
+            let leetcodeWaived = network.waiveOffStatus?.leetcodeWaivedToday ?? false
+
+            if !isGoalCompleted, !leetcodeWaived, let status = network.waiveOffStatus {
+                waiveOffBadge(remaining: status.leetcodeRemaining, type: .leetcode)
             }
 
             if leetCode.isLoading {
                 ProgressView()
                     .controlSize(.small)
             } else {
-                Image(systemName: isGoalCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isGoalCompleted ? .green : .secondary)
+                goalStatusIcon(isCompleted: isGoalCompleted, waivedToday: leetcodeWaived)
             }
         }
     }
@@ -440,30 +440,47 @@ struct ContentView: View {
 
     // MARK: - Waive-off Badge
 
+    /// Ticket button used to *spend* a waive-off. Only ever shown when the goal
+    /// is still open and hasn't been waived yet — the "already waived" case is
+    /// now handled entirely by `goalStatusIcon` so we don't double up indicators.
     @ViewBuilder
-    private func waiveOffBadge(remaining: Int, waivedToday: Bool, type: NetworkManager.WaiveOffType) -> some View {
-        if waivedToday {
-            Image(systemName: "checkmark.seal.fill")
+    private func waiveOffBadge(remaining: Int, type: NetworkManager.WaiveOffType) -> some View {
+        Button {
+            waiveOffAlertType = type
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "ticket.fill")
+                Text("\(remaining)")
+                    .fontWeight(.bold)
+            }
+            .font(.subheadline)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background((remaining > 0 ? Color.blue : Color.gray).opacity(0.12))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(remaining <= 0)
+        .foregroundStyle(remaining > 0 ? .blue : .secondary)
+    }
+
+    /// Single trailing status glyph for a goal card. Collapses "completed" and
+    /// "waived" into one indicator instead of showing a seal badge next to an
+    /// unrelated empty circle.
+    @ViewBuilder
+    private func goalStatusIcon(isCompleted: Bool, waivedToday: Bool) -> some View {
+        if isCompleted {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.title3)
+                .foregroundStyle(.green)
+        } else if waivedToday {
+            Image(systemName: "checkmark.seal")
                 .font(.title3)
                 .foregroundStyle(.orange)
         } else {
-            Button {
-                waiveOffAlertType = type
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "ticket.fill")
-                    Text("\(remaining)")
-                        .fontWeight(.bold)
-                }
-                .font(.subheadline)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background((remaining > 0 ? Color.blue : Color.gray).opacity(0.12))
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .disabled(remaining <= 0)
-            .foregroundStyle(remaining > 0 ? .blue : .secondary)
+            Image(systemName: "circle")
+                .font(.title3)
+                .foregroundStyle(.secondary)
         }
     }
 
