@@ -1,8 +1,9 @@
 import Combine
+import CoreLocation
 import Foundation
 
 @MainActor
-final class GymTracker: ObservableObject {
+final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     static let shared = GymTracker()
 
     // MARK: - Gym Configuration
@@ -14,9 +15,19 @@ final class GymTracker: ObservableObject {
 
     private let minimumRecordedSessionSeconds: TimeInterval = AppConfig.Gym.minimumRecordedSessionSeconds
 
+    private let gymLatitude: CLLocationDegrees = AppConfig.Gym.latitude
+    private let gymLongitude: CLLocationDegrees = AppConfig.Gym.longitude
+    private let gymRadiusMeters: CLLocationDistance = AppConfig.Gym.radiusMeters
+
     // MARK: - Published State
 
-    /// True after the user explicitly checks in via QR.
+    /// True when the latest location check confirms the device is inside the gym radius.
+    @Published var isInsideGeofence = false
+
+    /// Distance to the gym in meters, updated on location fetches.
+    @Published var distanceToGym: CLLocationDistance?
+
+    /// True after the user explicitly checks in.
     @Published var isCheckedIn = false
 
     /// True once the user has completed their session and checked out for today.
@@ -39,6 +50,14 @@ final class GymTracker: ObservableObject {
     /// when a new day begins.
     @Published var lastCheckOutDate: Date?
 
+    // MARK: - Location
+
+    private let locationManager = CLLocationManager()
+    private let desiredHorizontalAccuracy: CLLocationAccuracy = 20
+    private let locationRefreshTimeoutSeconds: UInt64 = 15
+    private var locationRefreshTimeoutTask: Task<Void, Never>?
+    private var bestLocationSoFar: CLLocation?
+
     // MARK: - Persistence
 
     private let userDefaults = UserDefaults.standard
@@ -48,17 +67,113 @@ final class GymTracker: ObservableObject {
     private let lastCheckInTimeKey = AppConfig.DefaultsKey.gymLastCheckInTime
     private let lastCheckOutTimeKey = AppConfig.DefaultsKey.gymLastCheckOutTime
 
+    // MARK: - Computed Properties
+
+    var gymCoordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: gymLatitude, longitude: gymLongitude)
+    }
+
     // MARK: - Initialization
 
-    init() {
+    override init() {
+        super.init()
+        locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+
         restoreActiveSession()
         checkDailyCheckoutStatus()
         loadTodayAccumulatedTime()
     }
 
+    // MARK: - Location Permission
+
+    func requestLocationPermissionIfNeeded() {
+        if locationManager.authorizationStatus == .notDetermined {
+            locationManager.requestWhenInUseAuthorization()
+        }
+    }
+
+    nonisolated func locationManagerDidChangeAuthorization(_: CLLocationManager) {
+        // No background setup required; permission changes are picked up on next refresh.
+    }
+
+    // MARK: - Manual Location Refresh (Pull-to-Refresh)
+
+    /// Requests an accurate location fix by starting continuous updates and
+    /// waiting until horizontal accuracy is under `desiredHorizontalAccuracy`,
+    /// or until the safety timeout elapses (whichever comes first).
+    func refreshLocation() {
+        bestLocationSoFar = nil
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        locationManager.startUpdatingLocation()
+
+        locationRefreshTimeoutTask?.cancel()
+        locationRefreshTimeoutTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: self.locationRefreshTimeoutSeconds * 1_000_000_000)
+            guard !Task.isCancelled else { return }
+
+            print("Location refresh timed out after \(self.locationRefreshTimeoutSeconds)s — using best fix so far")
+            self.locationManager.stopUpdatingLocation()
+            self.applyBestFixIfNeeded()
+        }
+    }
+
+    // MARK: - Live GPS Location Updates
+
+    nonisolated func locationManager(
+        _ manager: CLLocationManager,
+        didUpdateLocations locations: [CLLocation]
+    ) {
+        guard let latestLocation = locations.last else { return }
+        guard latestLocation.horizontalAccuracy > 0 else { return } // negative = invalid fix
+
+        Task { @MainActor in
+            // Track the most accurate fix we've seen, in case we time out before hitting target accuracy
+            if self.bestLocationSoFar == nil ||
+                latestLocation.horizontalAccuracy < self.bestLocationSoFar!.horizontalAccuracy {
+                self.bestLocationSoFar = latestLocation
+            }
+
+            let distance = latestLocation.distance(from: CLLocation(latitude: gymLatitude, longitude: gymLongitude))
+
+            print("Distance to gym: \(distance)m (accuracy: \(latestLocation.horizontalAccuracy)m) — current location: \(latestLocation.coordinate.latitude), \(latestLocation.coordinate.longitude)")
+
+            self.distanceToGym = distance
+            self.isInsideGeofence = (distance <= gymRadiusMeters)
+
+            // Stop only once we've got a fix accurate enough to trust
+            if latestLocation.horizontalAccuracy <= desiredHorizontalAccuracy {
+                manager.stopUpdatingLocation()
+                self.locationRefreshTimeoutTask?.cancel()
+                self.locationRefreshTimeoutTask = nil
+            }
+        }
+    }
+
+    /// Called when the safety timeout fires before we reached target accuracy.
+    /// Applies the best fix we managed to get, so state isn't left stale.
+    private func applyBestFixIfNeeded() {
+        guard let best = bestLocationSoFar else { return }
+
+        let distance = best.distance(from: CLLocation(latitude: gymLatitude, longitude: gymLongitude))
+        distanceToGym = distance
+        isInsideGeofence = (distance <= gymRadiusMeters)
+
+        print("Best available fix: \(distance)m (accuracy: \(best.horizontalAccuracy)m)")
+    }
+
+    nonisolated func locationManager(
+        _: CLLocationManager,
+        didFailWithError error: Error
+    ) {
+        print("Location manager failed with error: \(error.localizedDescription)")
+    }
+
     // MARK: - Check In
 
     func checkIn() {
+        guard isInsideGeofence else { return }
         guard !isCheckedIn else { return }
         guard !hasCheckedOutToday else { return }
 

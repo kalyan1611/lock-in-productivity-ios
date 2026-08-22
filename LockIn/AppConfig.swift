@@ -1,7 +1,8 @@
+import CoreLocation
 import Foundation
 
 /// Central place for every constant that points at something external
-/// (a device, a service, a physical QR code) or that represents a
+/// (a device, a service, a physical location) or that represents a
 /// tunable daily goal. Nothing behavioral lives here — just values.
 enum AppConfig {
     // MARK: - ESP32 Gate Controller
@@ -31,9 +32,16 @@ enum AppConfig {
     // MARK: - Gym
 
     enum Gym {
-        /// The physical QR code posted at the gym. Reprinting the code
-        /// only requires updating this string.
-        static let expectedQRCode = "Xhqz8fMwlEMcPmfiP9dP5MRz5yq3ArAQ67oKougs73jrDiJtNhw90JQ34AKnCPMe"
+        // GPS coordinates of the gym. Check-in/check-out is only allowed
+        // while the device is within `radiusMeters` of this point.
+        //
+
+        // gym coordinates
+        static let latitude: CLLocationDegrees = 17.38099
+        static let longitude: CLLocationDegrees = 78.36278
+
+        /// How close (in meters) the device needs to be to count as "at the gym".
+        static let radiusMeters: CLLocationDistance = 20
 
         static let targetDurationMinutes: Int = 45
         static let minimumRecordedSessionSeconds: TimeInterval = 60
