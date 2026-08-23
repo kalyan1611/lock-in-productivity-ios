@@ -310,7 +310,7 @@ struct ContentView: View {
         let waived = network.waiveOffStatus?.leetcodeWaivedToday ?? false
 
         return GoalCardShell(
-            title: "Problems Solved",
+            title: "Leetcode",
             icon: "chevron.left.forwardslash.chevron.right",
             progress: leetCode.progress,
             color: goalColor(isCompleted: isCompleted, waived: waived),
