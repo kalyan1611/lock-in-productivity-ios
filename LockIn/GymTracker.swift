@@ -110,12 +110,12 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         locationRefreshTimeoutTask?.cancel()
         locationRefreshTimeoutTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            try? await Task.sleep(nanoseconds: self.locationRefreshTimeoutSeconds * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: locationRefreshTimeoutSeconds * 1_000_000_000)
             guard !Task.isCancelled else { return }
 
-            print("Location refresh timed out after \(self.locationRefreshTimeoutSeconds)s — using best fix so far")
-            self.locationManager.stopUpdatingLocation()
-            self.applyBestFixIfNeeded()
+            print("Location refresh timed out after \(locationRefreshTimeoutSeconds)s — using best fix so far")
+            locationManager.stopUpdatingLocation()
+            applyBestFixIfNeeded()
         }
     }
 
@@ -131,7 +131,8 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         Task { @MainActor in
             // Track the most accurate fix we've seen, in case we time out before hitting target accuracy
             if self.bestLocationSoFar == nil ||
-                latestLocation.horizontalAccuracy < self.bestLocationSoFar!.horizontalAccuracy {
+                latestLocation.horizontalAccuracy < self.bestLocationSoFar!.horizontalAccuracy
+            {
                 self.bestLocationSoFar = latestLocation
             }
 

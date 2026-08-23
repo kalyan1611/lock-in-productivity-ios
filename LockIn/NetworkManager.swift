@@ -134,26 +134,31 @@ final class NetworkManager: ObservableObject {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw SyncError(message: "Invalid response from ESP32")
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw SyncError(message: "Invalid response from ESP32")
+            }
+
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                throw SyncError(message: "Unauthorized: Invalid ESP32 API Key")
+            }
+
+            guard (200 ... 299).contains(httpResponse.statusCode) else {
+                throw SyncError(message: "ESP32 returned a non-success status")
+            }
+
+            let result = try JSONDecoder().decode(SyncResult.self, from: data)
+            isGateOpen = result.isGateOpen
+            stepGoalMet = result.stepGoalMet
+            gymGoalMet = result.gymGoalMet
+            leetCodeGoalMet = result.leetCodeGoalMet
+
+            return result
+        } catch {
+            isGateOpen = nil
+            throw error
         }
-
-        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-            throw SyncError(message: "Unauthorized: Invalid ESP32 API Key")
-        }
-
-        guard (200 ... 299).contains(httpResponse.statusCode) else {
-            throw SyncError(message: "ESP32 returned a non-success status")
-        }
-
-        let result = try JSONDecoder().decode(SyncResult.self, from: data)
-        isGateOpen = result.isGateOpen
-        stepGoalMet = result.stepGoalMet
-        gymGoalMet = result.gymGoalMet
-        leetCodeGoalMet = result.leetCodeGoalMet
-
-        return result
     }
 
     /// Lightweight ping check determining Gate Controller online status strictly via GET /status

@@ -22,8 +22,8 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Steps") { stepsCard }
-                Section("Gym Session") { gymCard }
+                Section("Walking") { stepsCard }
+                Section("Workout") { gymCard }
                 Section("LeetCode") { leetCodeCard }
                 Section("Device Status") { deviceStatusCard }
             }
@@ -55,7 +55,7 @@ struct ContentView: View {
                 }
             )) {
                 Button("Cancel", role: .cancel) { waiveOffAlertType = nil }
-                Button("Confirm", role: .destructive) {
+                Button("Use waive-off") {
                     if let type = waiveOffAlertType {
                         Task {
                             do {
@@ -92,7 +92,7 @@ struct ContentView: View {
         let isGoalCompleted = healthKit.areTodaysStepsCompleted
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Label("Today's Steps", systemImage: "figure.walk")
+                Label("Steps", systemImage: "figure.walk")
                     .font(.subheadline)
                     .bold()
 
@@ -171,7 +171,7 @@ struct ContentView: View {
     private var gymHeaderRow: some View {
         let isGoalCompleted = gymTracker.isGymSessionCompleted
         HStack {
-            Label("Session Time", systemImage: "dumbbell.fill")
+            Label("Duration", systemImage: "dumbbell.fill")
                 .font(.subheadline)
                 .bold()
 
@@ -237,7 +237,7 @@ struct ContentView: View {
                         !canCheckOut
                             ? "Minimum duration required"
                             : gymTracker.isInsideGeofence
-                            ? "Target reached • Ready to check out"
+                            ? "Goal met — check out anytime"
                             : "Return to gym zone to check out"
                     )
                     .font(.caption2)
@@ -291,7 +291,7 @@ struct ContentView: View {
                 .tint(.green)
                 .disabled(!gymTracker.isInsideGeofence)
 
-                Text(gymTracker.isInsideGeofence ? "Ready to check in" : "Enter gym zone to check in")
+                Text(gymTracker.isInsideGeofence ? "In range — check in" : "Enter gym zone to check in")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -319,7 +319,7 @@ struct ContentView: View {
     private var leetCodeHeaderRow: some View {
         let isGoalCompleted = leetCode.isGoalMet
         HStack {
-            Label("Today's submissions", systemImage: "chevron.left.forwardslash.chevron.right")
+            Label("Problems solved", systemImage: "chevron.left.forwardslash.chevron.right")
                 .font(.subheadline)
                 .bold()
 
@@ -444,18 +444,17 @@ struct ContentView: View {
     /// Percent complete (0–100, clamped) for a given goal type, based on the
     /// same live values already shown on each card.
     private func waiveOffProgressPercent(for type: NetworkManager.WaiveOffType) -> Int {
-        let fraction: Double
-        switch type {
+        let fraction: Double = switch type {
         case .steps:
-            fraction = healthKit.targetSteps > 0
+            healthKit.targetSteps > 0
                 ? Double(healthKit.todaySteps) / Double(healthKit.targetSteps)
                 : 0
         case .gym:
-            fraction = gymTracker.targetGymDurationSeconds > 0
+            gymTracker.targetGymDurationSeconds > 0
                 ? gymTracker.totalSecondsToday / gymTracker.targetGymDurationSeconds
                 : 0
         case .leetcode:
-            fraction = leetCode.targetProblems > 0
+            leetCode.targetProblems > 0
                 ? Double(leetCode.totalTodayCount) / Double(leetCode.targetProblems)
                 : 0
         }
@@ -480,14 +479,13 @@ struct ContentView: View {
     /// Ticket button used to *spend* a waive-off. Only ever shown when the goal
     /// is still open and hasn't been waived yet — the "already waived" case is
     /// now handled entirely by `goalStatusIcon` so we don't double up indicators.
-    @ViewBuilder
     private func waiveOffBadge(remaining: Int, type: NetworkManager.WaiveOffType) -> some View {
         Button {
             waiveOffAlertType = type
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "ticket.fill")
-                Text("\(remaining)")
+                Text("\(remaining) left")
                     .fontWeight(.bold)
             }
             .font(.subheadline)
@@ -527,11 +525,15 @@ struct ContentView: View {
     /// Every network path — gate sync, waive-off fetch, LeetCode fetch —
     /// funnels through here so there's one place, one message, one color.
     private var networkErrorMessage: String? {
-        if !lastSyncStatus.isEmpty { return lastSyncStatus }
+        if !lastSyncStatus.isEmpty {
+            return lastSyncStatus
+        }
         if network.waiveOffStatus == nil, let waiveOffError = network.waiveOffFetchError {
             return waiveOffError
         }
-        if let leetCodeError = leetCode.errorMessage { return leetCodeError }
+        if let leetCodeError = leetCode.errorMessage {
+            return leetCodeError
+        }
         return nil
     }
 
