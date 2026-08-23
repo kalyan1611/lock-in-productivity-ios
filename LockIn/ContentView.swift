@@ -29,7 +29,7 @@ struct ContentView: View {
         /// An interactive control ↔ its explanatory caption below it.
         static let group: CGFloat = 12
         /// Card ↔ next card's section (Form section spacing).
-        static let section: CGFloat = 8
+        static let section: CGFloat = 40
         /// Vertical breathing room inside a card, above/below its content.
         static let cardPadding: CGFloat = 4
     }
@@ -39,10 +39,10 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Walking") { stepsCard }
-                Section("Workout") { gymCard }
-                Section("LeetCode") { leetCodeCard }
-                Section("Device Status") { deviceStatusCard }
+                Section() { stepsCard }
+                Section() { gymCard }
+                Section() { leetCodeCard }
+                Section() { deviceStatusCard }
             }
             .listSectionSpacing(Spacing.section)
             .scrollIndicators(.hidden)
@@ -50,17 +50,18 @@ struct ContentView: View {
             .navigationTitle("LockIn")
             .navigationBarTitleDisplayMode(.inline)
             .task {
-                await syncNow()
+                await refresh()
             }
             .refreshable {
-                await syncNow()
+                await refresh()
             }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
-                    Task { await syncNow() }
+                    Task { await refresh() }
                 }
             }
             .onAppear {
+                UIRefreshControl.appearance().tintColor = .green
                 gymTracker.requestLocationPermissionIfNeeded()
             }
             .alert("Use a waive-off?", isPresented: Binding(
@@ -181,7 +182,7 @@ struct ContentView: View {
     private var gymHeaderRow: some View {
         let isGoalCompleted = gymTracker.isGymSessionCompleted
         HStack {
-            Label("Session Time", systemImage: "dumbbell.fill")
+            Label("Workout", systemImage: "dumbbell.fill")
                 .font(.subheadline)
                 .bold()
 
@@ -561,7 +562,7 @@ struct ContentView: View {
 
     // MARK: - Sync
 
-    private func syncNow() async {
+    private func refresh() async {
         lastSyncStatus = ""
 
         do {
@@ -575,6 +576,7 @@ struct ContentView: View {
             await healthKit.syncSteps()
             let steps = healthKit.todaySteps
 
+            gymTracker.checkDailyCheckoutStatus()
             gymTracker.loadTodayAccumulatedTime()
             let gymSeconds = Int(gymTracker.totalSecondsToday)
 

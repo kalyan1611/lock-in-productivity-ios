@@ -240,7 +240,7 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // MARK: - Check Daily Checkout Status
 
-    private func checkDailyCheckoutStatus() {
+    func checkDailyCheckoutStatus() {
         let lastCheckoutDate = userDefaults.string(forKey: lastCheckOutDateKey)
         let today = todayDateString()
 
