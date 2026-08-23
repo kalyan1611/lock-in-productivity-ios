@@ -17,6 +17,23 @@ struct ContentView: View {
 
     private var checkButtonsHeight: CGFloat = 38
 
+    /// One spacing scale, used everywhere in this screen instead of ad hoc
+    /// numbers, so the same kind of relationship always gets the same gap.
+    private enum Spacing {
+        /// Icon ↔ tiny inline text (location caption, ticket count).
+        static let micro: CGFloat = 4
+        /// Icon ↔ label inside a button, or a small icon-led detail row.
+        static let iconText: CGFloat = 6
+        /// Row ↔ row within a single card (header, body, footer).
+        static let row: CGFloat = 8
+        /// An interactive control ↔ its explanatory caption below it.
+        static let group: CGFloat = 12
+        /// Card ↔ next card's section (Form section spacing).
+        static let section: CGFloat = 8
+        /// Vertical breathing room inside a card, above/below its content.
+        static let cardPadding: CGFloat = 4
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -27,7 +44,7 @@ struct ContentView: View {
                 Section("LeetCode") { leetCodeCard }
                 Section("Device Status") { deviceStatusCard }
             }
-            .listSectionSpacing(.compact)
+            .listSectionSpacing(Spacing.section)
             .scrollIndicators(.hidden)
             .safeAreaPadding(.bottom, 16)
             .navigationTitle("LockIn")
@@ -90,7 +107,7 @@ struct ContentView: View {
     @ViewBuilder
     private var stepsCard: some View {
         let isGoalCompleted = healthKit.areTodaysStepsCompleted
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Spacing.row) {
             HStack {
                 Label("Steps", systemImage: "figure.walk")
                     .font(.subheadline)
@@ -119,91 +136,64 @@ struct ContentView: View {
                 Spacer()
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, Spacing.cardPadding)
     }
 
     // MARK: - 2. Gym Card
 
     private var gymCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Spacing.row) {
             gymHeaderRow
-            gymStatusRow
             gymActionButton
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, Spacing.cardPadding)
     }
 
-    private var gymStatusRow: some View {
-        HStack(spacing: 6) {
-            locationLabel
-                .foregroundStyle(gymTracker.isInsideGeofence ? .green : .secondary)
-
-            Spacer()
-
-            if !gymTracker.hasCheckedOutToday {
-                let minutesToday = Int(gymTracker.totalSecondsToday / 60)
-                let targetMinutes = gymTracker.targetGymDurationMinutes
-
-                Text("\(minutesToday)/\(targetMinutes) mins")
-                    .bold()
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .font(.caption)
-    }
-
+    /// Plain location fact, shown as a caption under the check-in/check-out
+    /// button. The button's own label and enabled state already say what to
+    /// do about it, so this just states where you are.
     @ViewBuilder
-    private var locationLabel: some View {
+    private var gymGuidanceLabel: some View {
         if gymTracker.isInsideGeofence {
-            Label("Inside gym zone", systemImage: "location.fill")
-        } else if let distance = gymTracker.distanceToGym {
-            let formattedDistance = distance >= 1000
-                ? String(format: "%.1f km away", distance / 1000)
-                : String(format: "%.0f m away", distance)
-
-            Label(formattedDistance, systemImage: "location")
+            gymGuidanceRow(icon: "location.fill", text: "Inside gym zone")
+        } else if gymTracker.distanceToGym != nil {
+            gymGuidanceRow(icon: "location", text: formattedDistance)
         } else {
-            Label("Location unknown", systemImage: "location.slash")
+            gymGuidanceRow(icon: "location.slash", text: "Location unknown")
         }
+    }
+
+    private func gymGuidanceRow(icon: String, text: String) -> some View {
+        HStack(spacing: Spacing.micro) {
+            Image(systemName: icon)
+            Text(text)
+        }
+    }
+
+    private var formattedDistance: String {
+        guard let distance = gymTracker.distanceToGym else { return "" }
+        return distance >= 1000
+            ? String(format: "%.1f km away", distance / 1000)
+            : String(format: "%.0f m away", distance)
     }
 
     @ViewBuilder
     private var gymHeaderRow: some View {
         let isGoalCompleted = gymTracker.isGymSessionCompleted
         HStack {
-            Label("Duration", systemImage: "dumbbell.fill")
+            Label("Session Time", systemImage: "dumbbell.fill")
                 .font(.subheadline)
                 .bold()
 
             Spacer()
 
-            if gymTracker.isCheckedIn, let checkInDate = gymTracker.checkInDate {
-                TimelineView(.periodic(from: checkInDate, by: 1)) { context in
-                    let elapsed = context.date.timeIntervalSince(checkInDate)
-                    let remaining = max(gymTracker.targetGymDurationSeconds - elapsed, 0)
+            let gymWaived = network.waiveOffStatus?.gymWaivedToday ?? false
 
-                    HStack(spacing: 4) {
-                        Image(systemName: "timer")
-                        Text(remaining > 0 ? timeString(from: remaining) : "\(gymTracker.targetGymDurationMinutes):00")
-                            .monospacedDigit()
-                            .fontWeight(.bold)
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.green)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.green.opacity(0.12))
-                    .clipShape(Capsule())
-                }
-            } else {
-                let gymWaived = network.waiveOffStatus?.gymWaivedToday ?? false
-
-                if !isGoalCompleted, !gymWaived, let status = network.waiveOffStatus {
-                    waiveOffBadge(remaining: status.gymRemaining, type: .gym)
-                }
-
-                goalStatusIcon(isCompleted: isGoalCompleted, waivedToday: gymWaived)
+            if !isGoalCompleted, !gymWaived, let status = network.waiveOffStatus {
+                waiveOffBadge(remaining: status.gymRemaining, type: .gym)
             }
+
+            goalStatusIcon(isCompleted: isGoalCompleted, waivedToday: gymWaived)
         }
     }
 
@@ -212,17 +202,18 @@ struct ContentView: View {
         if gymTracker.isCheckedIn, let checkInDate = gymTracker.checkInDate {
             TimelineView(.periodic(from: checkInDate, by: 1)) { context in
                 let elapsed = context.date.timeIntervalSince(checkInDate)
+                let remaining = max(gymTracker.targetGymDurationSeconds - elapsed, 0)
                 let canCheckOut = elapsed >= gymTracker.targetGymDurationSeconds
-
                 let readyToCheckOut = canCheckOut && gymTracker.isInsideGeofence
 
-                VStack(spacing: 4) {
+                VStack(spacing: Spacing.group) {
                     Button {
                         gymTracker.checkOut()
                     } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "figure.walk.departure")
-                            Text("Check Out")
+                        HStack(spacing: Spacing.iconText) {
+                            Image(systemName: canCheckOut ? "figure.walk.departure" : "timer")
+                            Text(canCheckOut ? "Check Out" : timeString(from: remaining))
+                                .monospacedDigit()
                         }
                         .font(.subheadline)
                         .fontWeight(.semibold)
@@ -230,26 +221,20 @@ struct ContentView: View {
                         .frame(height: checkButtonsHeight)
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(readyToCheckOut ? .red : .gray)
+                    .tint(readyToCheckOut ? .red : (canCheckOut ? .gray : .green))
                     .disabled(!readyToCheckOut)
 
-                    Text(
-                        !canCheckOut
-                            ? "Minimum duration required"
-                            : gymTracker.isInsideGeofence
-                            ? "Goal met — check out anytime"
-                            : "Return to gym zone to check out"
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(readyToCheckOut ? .green : .secondary)
+                    gymGuidanceLabel
+                        .font(.caption2)
+                        .foregroundStyle(gymTracker.isInsideGeofence ? .green : .secondary)
                 }
             }
         } else if gymTracker.hasCheckedOutToday {
-            VStack(spacing: 4) {
+            VStack(spacing: Spacing.group) {
                 Button {} label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: Spacing.iconText) {
                         Image(systemName: "checkmark.circle.fill")
-                        Text("Session Complete")
+                        Text("Session complete")
                     }
                     .font(.subheadline)
                     .fontWeight(.semibold)
@@ -261,24 +246,16 @@ struct ContentView: View {
                 .foregroundStyle(.green)
                 .allowsHitTesting(false)
 
-                if let inTime = gymTracker.lastCheckInDate?.formatted(date: .omitted, time: .shortened),
-                   let outTime = gymTracker.lastCheckOutDate?.formatted(date: .omitted, time: .shortened)
-                {
-                    Text("In at \(inTime) • Out at \(outTime)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Workout logged for today")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                Text(workoutDurationText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         } else {
-            VStack(spacing: 4) {
+            VStack(spacing: Spacing.group) {
                 Button {
                     gymTracker.checkIn()
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: Spacing.iconText) {
                         Image(systemName: "figure.strengthtraining.traditional")
                         Text("Check In")
                     }
@@ -291,17 +268,25 @@ struct ContentView: View {
                 .tint(.green)
                 .disabled(!gymTracker.isInsideGeofence)
 
-                Text(gymTracker.isInsideGeofence ? "In range — check in" : "Enter gym zone to check in")
+                gymGuidanceLabel
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(gymTracker.isInsideGeofence ? .green : .secondary)
             }
         }
+    }
+
+    private var workoutDurationText: String {
+        guard let inTime = gymTracker.lastCheckInDate, let outTime = gymTracker.lastCheckOutDate else {
+            return "Workout logged for today"
+        }
+        let minutes = Int(outTime.timeIntervalSince(inTime) / 60)
+        return "Workout duration: \(minutes) mins"
     }
 
     // MARK: - 3. LeetCode Card
 
     private var leetCodeCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Spacing.row) {
             leetCodeHeaderRow
             leetCodeCountRow
 
@@ -312,7 +297,7 @@ struct ContentView: View {
 
             leetCodeDifficultyBreakdown
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, Spacing.cardPadding)
     }
 
     @ViewBuilder
@@ -371,7 +356,7 @@ struct ContentView: View {
     }
 
     private func leetCodeDifficultyColumn(label: String, count: Int, color: Color) -> some View {
-        VStack(spacing: 2) {
+        VStack(spacing: Spacing.micro) {
             Text(label)
                 .font(.caption2)
                 .fontWeight(.bold)
@@ -387,7 +372,7 @@ struct ContentView: View {
     // MARK: - 4. Device Status Card
 
     private var deviceStatusCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: Spacing.row) {
             HStack {
                 Label("Internet Access", systemImage: "wifi")
                     .font(.subheadline)
@@ -400,7 +385,7 @@ struct ContentView: View {
                     .foregroundStyle(internetStatus.color)
             }
 
-            HStack(spacing: 6) {
+            HStack(spacing: Spacing.iconText) {
                 Circle()
                     .fill(statusColor)
                     .frame(width: 6, height: 6)
@@ -419,7 +404,7 @@ struct ContentView: View {
 
             deviceStatusFooter
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, Spacing.cardPadding)
     }
 
     @ViewBuilder
@@ -444,17 +429,18 @@ struct ContentView: View {
     /// Percent complete (0–100, clamped) for a given goal type, based on the
     /// same live values already shown on each card.
     private func waiveOffProgressPercent(for type: NetworkManager.WaiveOffType) -> Int {
-        let fraction: Double = switch type {
+        let fraction: Double
+        switch type {
         case .steps:
-            healthKit.targetSteps > 0
+            fraction = healthKit.targetSteps > 0
                 ? Double(healthKit.todaySteps) / Double(healthKit.targetSteps)
                 : 0
         case .gym:
-            gymTracker.targetGymDurationSeconds > 0
+            fraction = gymTracker.targetGymDurationSeconds > 0
                 ? gymTracker.totalSecondsToday / gymTracker.targetGymDurationSeconds
                 : 0
         case .leetcode:
-            leetCode.targetProblems > 0
+            fraction = leetCode.targetProblems > 0
                 ? Double(leetCode.totalTodayCount) / Double(leetCode.targetProblems)
                 : 0
         }
@@ -479,11 +465,12 @@ struct ContentView: View {
     /// Ticket button used to *spend* a waive-off. Only ever shown when the goal
     /// is still open and hasn't been waived yet — the "already waived" case is
     /// now handled entirely by `goalStatusIcon` so we don't double up indicators.
+    @ViewBuilder
     private func waiveOffBadge(remaining: Int, type: NetworkManager.WaiveOffType) -> some View {
         Button {
             waiveOffAlertType = type
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: Spacing.micro) {
                 Image(systemName: "ticket.fill")
                 Text("\(remaining) left")
                     .fontWeight(.bold)
@@ -525,15 +512,11 @@ struct ContentView: View {
     /// Every network path — gate sync, waive-off fetch, LeetCode fetch —
     /// funnels through here so there's one place, one message, one color.
     private var networkErrorMessage: String? {
-        if !lastSyncStatus.isEmpty {
-            return lastSyncStatus
-        }
+        if !lastSyncStatus.isEmpty { return lastSyncStatus }
         if network.waiveOffStatus == nil, let waiveOffError = network.waiveOffFetchError {
             return waiveOffError
         }
-        if let leetCodeError = leetCode.errorMessage {
-            return leetCodeError
-        }
+        if let leetCodeError = leetCode.errorMessage { return leetCodeError }
         return nil
     }
 

@@ -41,7 +41,7 @@ enum AppConfig {
         static let longitude: CLLocationDegrees = 78.36278
 
         /// How close (in meters) the device needs to be to count as "at the gym".
-        static let radiusMeters: CLLocationDistance = 15
+        static let radiusMeters: CLLocationDistance = 10
 
         static let targetDurationMinutes: Int = 45
         static let minimumRecordedSessionSeconds: TimeInterval = 60
