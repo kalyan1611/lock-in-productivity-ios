@@ -1,6 +1,7 @@
 import SwiftUI
 
 // MARK: - Design Tokens
+
 //
 // LockIn's whole premise is a physical gate that only opens when the day's
 // goals are met, so the UI leans into that: a dark "control panel" surface,
@@ -28,6 +29,7 @@ private enum Palette {
     static let textPrimary = Color(hex: 0xEDEEF0)
     static let textSecondary = Color(hex: 0x9A9EA6)
     static let open = Color(hex: 0x3DDC84)
+    static let started = Color(hex: 0x4A9EFF)
     static let locked = Color(hex: 0xFF5A5A)
     static let waived = Color(hex: 0xFFB648)
     static let neutral = Color(hex: 0x4C5561)
@@ -56,6 +58,7 @@ struct ContentView: View {
     @State private var lastSyncStatus: String = ""
     @State private var waiveOffAlertType: NetworkManager.WaiveOffType?
     @State private var waiveOffError: String?
+    @State private var isRefreshing = false
 
     private let checkButtonsHeight: CGFloat = 46
 
@@ -65,18 +68,15 @@ struct ContentView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    
                     stepsCard
                     gymCard
                     leetCodeCard
-                    
+
                     GateHero(
                         isOpen: network.isGateOpen,
                         deviceOnline: network.connectionStatus == .online,
-                        lastChecked: network.lastCheckedAt,
                         errorMessage: networkErrorMessage
                     )
-                    .padding(.top, 4)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
@@ -88,8 +88,8 @@ struct ContentView: View {
             .toolbarBackground(Palette.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .task { Task { await refresh() } }
-            .refreshable { Task { await refresh() } }
+//            .task { await refresh() }
+//            .refreshable { await refresh() }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     Task { await refresh() }
@@ -115,11 +115,19 @@ struct ContentView: View {
     }
 
     private var waiveOffPromptBinding: Binding<Bool> {
-        Binding(get: { waiveOffAlertType != nil }, set: { if !$0 { waiveOffAlertType = nil } })
+        Binding(get: { waiveOffAlertType != nil }, set: {
+            if !$0 {
+                waiveOffAlertType = nil
+            }
+        })
     }
 
     private var waiveOffErrorBinding: Binding<Bool> {
-        Binding(get: { waiveOffError != nil }, set: { if !$0 { waiveOffError = nil } })
+        Binding(get: { waiveOffError != nil }, set: {
+            if !$0 {
+                waiveOffError = nil
+            }
+        })
     }
 
     private func confirmWaiveOff() {
@@ -146,7 +154,7 @@ struct ContentView: View {
             title: "Steps",
             icon: "figure.walk",
             progress: progress,
-            color: goalColor(isCompleted: isCompleted, waived: waived),
+            color: goalColor(progress: progress, isCompleted: isCompleted, waived: waived),
             isCompleted: isCompleted,
             waived: waived,
             waiveRemaining: network.waiveOffStatus?.stepsRemaining,
@@ -178,7 +186,7 @@ struct ContentView: View {
             title: "Workout",
             icon: "dumbbell.fill",
             progress: progress,
-            color: goalColor(isCompleted: isCompleted, waived: waived),
+            color: goalColor(progress: progress, isCompleted: isCompleted, waived: waived),
             isCompleted: isCompleted,
             waived: waived,
             waiveRemaining: network.waiveOffStatus?.gymRemaining,
@@ -313,7 +321,7 @@ struct ContentView: View {
             title: "Leetcode",
             icon: "chevron.left.forwardslash.chevron.right",
             progress: leetCode.progress,
-            color: goalColor(isCompleted: isCompleted, waived: waived),
+            color: goalColor(progress: leetCode.progress, isCompleted: isCompleted, waived: waived),
             isCompleted: isCompleted,
             waived: waived,
             waiveRemaining: network.waiveOffStatus?.leetcodeRemaining,
@@ -363,10 +371,20 @@ struct ContentView: View {
 
     // MARK: - Shared Helpers
 
-    private func goalColor(isCompleted: Bool, waived: Bool) -> Color {
-        if isCompleted { return Palette.open }
-        if waived { return Palette.waived }
-        return Color.blue
+    /// Grey: not started. Blue: started, not yet complete. Green: goal met.
+    /// Orange: a waive-off covered the day instead. `isCompleted` wins over
+    /// `waived` since actually meeting the goal outranks skipping it.
+    private func goalColor(progress: Double, isCompleted: Bool, waived: Bool) -> Color {
+        if isCompleted {
+            return Palette.open
+        }
+        if waived {
+            return Palette.waived
+        }
+        if progress > 0 {
+            return Palette.started
+        }
+        return Palette.neutral
     }
 
     private func timeString(from seconds: TimeInterval) -> String {
@@ -380,29 +398,32 @@ struct ContentView: View {
     /// Every network path — gate sync, waive-off fetch, LeetCode fetch —
     /// funnels through here so there's one place, one message.
     private var networkErrorMessage: String? {
-        if !lastSyncStatus.isEmpty { return lastSyncStatus }
+        if !lastSyncStatus.isEmpty {
+            return lastSyncStatus
+        }
         if network.waiveOffStatus == nil, let waiveOffError = network.waiveOffFetchError {
             return waiveOffError
         }
-        if let leetCodeError = leetCode.errorMessage { return leetCodeError }
+        if let leetCodeError = leetCode.errorMessage {
+            return leetCodeError
+        }
         return nil
     }
 
     // MARK: - Waive-off Alert Message
 
     private func waiveOffProgressPercent(for type: NetworkManager.WaiveOffType) -> Int {
-        let fraction: Double
-        switch type {
+        let fraction: Double = switch type {
         case .steps:
-            fraction = healthKit.targetSteps > 0
+            healthKit.targetSteps > 0
                 ? Double(healthKit.todaySteps) / Double(healthKit.targetSteps)
                 : 0
         case .gym:
-            fraction = gymTracker.targetGymDurationSeconds > 0
+            gymTracker.targetGymDurationSeconds > 0
                 ? gymTracker.totalSecondsToday / gymTracker.targetGymDurationSeconds
                 : 0
         case .leetcode:
-            fraction = leetCode.targetProblems > 0
+            leetCode.targetProblems > 0
                 ? Double(leetCode.totalTodayCount) / Double(leetCode.targetProblems)
                 : 0
         }
@@ -422,6 +443,10 @@ struct ContentView: View {
     // MARK: - Sync
 
     private func refresh() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
         lastSyncStatus = ""
 
         do {
@@ -452,6 +477,7 @@ struct ContentView: View {
 
             await network.fetchWaiveOffStatus()
         } catch {
+            print("sendSync failed: \(error)")
             lastSyncStatus = "Couldn't reach your gate device — \(error.localizedDescription)"
         }
     }
@@ -465,7 +491,6 @@ struct ContentView: View {
 private struct GateHero: View {
     let isOpen: Bool?
     let deviceOnline: Bool
-    let lastChecked: Date?
     let errorMessage: String?
 
     private var tint: Color {
@@ -502,7 +527,7 @@ private struct GateHero: View {
                     .stroke(tint.opacity(0.35), lineWidth: 2)
                     .frame(width: 50, height: 50)
                 Image(systemName: icon)
-                    .font(.system(size: 38, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(tint)
                     .contentTransition(.symbolEffect(.replace))
             }
@@ -577,32 +602,8 @@ private struct GoalCardShell<Content: View, Footer: View>: View {
     let waived: Bool
     let waiveRemaining: Int?
     let onTapWaiveOff: () -> Void
-    let content: Content
-    let footer: Footer
-
-    init(
-        title: String,
-        icon: String,
-        progress: Double,
-        color: Color,
-        isCompleted: Bool,
-        waived: Bool,
-        waiveRemaining: Int?,
-        onTapWaiveOff: @escaping () -> Void,
-        @ViewBuilder content: () -> Content,
-        @ViewBuilder footer: () -> Footer
-    ) {
-        self.title = title
-        self.icon = icon
-        self.progress = progress
-        self.color = color
-        self.isCompleted = isCompleted
-        self.waived = waived
-        self.waiveRemaining = waiveRemaining
-        self.onTapWaiveOff = onTapWaiveOff
-        self.content = content()
-        self.footer = footer()
-    }
+    @ViewBuilder let content: Content
+    @ViewBuilder let footer: Footer
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -640,8 +641,6 @@ private struct GoalCardShell<Content: View, Footer: View>: View {
             if !isCompleted, !waived, let waiveRemaining {
                 TicketBadge(remaining: waiveRemaining, action: onTapWaiveOff)
             }
-
-            StatusGlyph(isCompleted: isCompleted, waived: waived, color: color)
         }
     }
 }
@@ -665,17 +664,5 @@ private struct TicketBadge: View {
         }
         .buttonStyle(.plain)
         .disabled(remaining <= 0)
-    }
-}
-
-private struct StatusGlyph: View {
-    let isCompleted: Bool
-    let waived: Bool
-    let color: Color
-
-    var body: some View {
-//        Image(systemName: isCompleted ? "checkmark.circle.fill" : (waived ? "checkmark.seal" : "circle"))
-//            .font(.title3)
-//            .foregroundStyle(isCompleted || waived ? color : Palette.neutral)
     }
 }
