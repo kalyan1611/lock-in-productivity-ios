@@ -305,7 +305,7 @@ struct ContentView: View {
     private var leetCodeHeaderRow: some View {
         let isGoalCompleted = leetCode.isGoalMet
         HStack {
-            Label("Problems solved", systemImage: "chevron.left.forwardslash.chevron.right")
+            Label("LeetCode", systemImage: "chevron.left.forwardslash.chevron.right")
                 .font(.subheadline)
                 .bold()
 
