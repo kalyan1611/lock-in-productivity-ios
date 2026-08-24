@@ -58,7 +58,6 @@ struct ContentView: View {
     @State private var lastSyncStatus: String = ""
     @State private var waiveOffAlertType: NetworkManager.WaiveOffType?
     @State private var waiveOffError: String?
-    @State private var isRefreshing = false
 
     private let checkButtonsHeight: CGFloat = 46
 
@@ -88,15 +87,24 @@ struct ContentView: View {
             .toolbarBackground(Palette.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-//            .task { await refresh() }
-//            .refreshable { await refresh() }
+            .task { await refresh() }
+            .refreshable {
+                // This task ensures the system's refresh animation stays open
+                // without letting SwiftUI's view-tree updates kill your network calls.
+                await withCheckedContinuation { continuation in
+                    Task {
+                        await refresh()
+                        continuation.resume()
+                    }
+                }
+            }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     Task { await refresh() }
                 }
             }
             .onAppear {
-                UIRefreshControl.appearance().tintColor = UIColor(Palette.textSecondary)
+                UIRefreshControl.appearance().tintColor = UIColor(Color.green)
                 gymTracker.requestLocationPermissionIfNeeded()
             }
             .alert("Use a waive-off?", isPresented: waiveOffPromptBinding) {
@@ -443,9 +451,6 @@ struct ContentView: View {
     // MARK: - Sync
 
     private func refresh() async {
-        guard !isRefreshing else { return }
-        isRefreshing = true
-        defer { isRefreshing = false }
 
         lastSyncStatus = ""
 
