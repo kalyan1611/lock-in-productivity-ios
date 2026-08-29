@@ -58,6 +58,7 @@ struct ContentView: View {
     @State private var lastSyncStatus: String = ""
     @State private var waiveOffAlertType: NetworkManager.WaiveOffType?
     @State private var waiveOffError: String?
+    @State private var isClaiming = false
 
     private let checkButtonsHeight: CGFloat = 46
 
@@ -74,7 +75,12 @@ struct ContentView: View {
                     GateHero(
                         isOpen: network.isGateOpen,
                         deviceOnline: network.connectionStatus == .online,
-                        errorMessage: networkErrorMessage
+                        errorMessage: networkErrorMessage,
+                        goalsFullyMet: network.goalsFullyMet,
+                        availableToClaimMinutes: network.availableToClaimMinutes,
+                        remainingMinutes: network.remainingMinutesToday,
+                        isClaiming: isClaiming,
+                        onClaim: { await claimCredit() }
                     )
                 }
                 .padding(.horizontal, 16)
@@ -477,13 +483,26 @@ struct ContentView: View {
             try await NetworkManager.shared.sendSync(
                 steps: steps,
                 gymSeconds: gymSeconds,
-                leetCodeSolved: leetCode.totalTodayCount
+                leetCodeEasy: leetCode.easyTodayCount,
+                leetCodeMedium: leetCode.mediumTodayCount,
+                leetCodeHard: leetCode.hardTodayCount
             )
 
             await network.fetchWaiveOffStatus()
         } catch {
             print("sendSync failed: \(error)")
             lastSyncStatus = "Couldn't reach your gate device — \(error.localizedDescription)"
+        }
+    }
+
+    private func claimCredit() async {
+        guard !isClaiming else { return }
+        isClaiming = true
+        defer { isClaiming = false }
+        do {
+            try await NetworkManager.shared.claim()
+        } catch {
+            lastSyncStatus = "Couldn't claim credit — \(error.localizedDescription)"
         }
     }
 }
@@ -497,6 +516,11 @@ private struct GateHero: View {
     let isOpen: Bool?
     let deviceOnline: Bool
     let errorMessage: String?
+    let goalsFullyMet: Bool?
+    let availableToClaimMinutes: Int?
+    let remainingMinutes: Int?
+    let isClaiming: Bool
+    let onClaim: () async -> Void
 
     private var tint: Color {
         switch isOpen {
@@ -508,7 +532,7 @@ private struct GateHero: View {
 
     private var label: String {
         switch isOpen {
-        case .some(true): "FULL ACCESS"
+        case .some(true): goalsFullyMet == true ? "UNLOCKED FOR TODAY" : "OPEN — SPENDING BALANCE"
         case .some(false): "RESTRICTED"
         case .none: "UNKNOWN"
         }
@@ -520,6 +544,14 @@ private struct GateHero: View {
         case .some(false): "lock.fill"
         case .none: "questionmark"
         }
+    }
+
+    private func formatMinutes(_ minutes: Int) -> String {
+        let h = minutes / 60
+        let m = minutes % 60
+        if h > 0 && m > 0 { return "\(h)h \(m)m" }
+        if h > 0 { return "\(h)h" }
+        return "\(m)m"
     }
 
     var body: some View {
@@ -544,13 +576,22 @@ private struct GateHero: View {
                     .tracking(2)
                     .foregroundStyle(tint)
 
+                // Single row, always: device status on the left, credit info
+                // on the right. Folded into the same row so the card never
+                // grows — only its trailing content changes.
                 HStack(spacing: 6) {
                     Circle()
                         .fill(deviceOnline ? Palette.open : Palette.locked)
                         .frame(width: 6, height: 6)
-                    Text(deviceOnline ? "Gate controller online" : "Gate controller offline")
+                    Text(deviceOnline ? "Online" : "Offline")
                         .font(.caption)
                         .foregroundStyle(Palette.textSecondary)
+
+                    Text("·")
+                        .font(.caption)
+                        .foregroundStyle(Palette.textSecondary.opacity(0.5))
+
+                    creditTrailingContent
                 }
             }
 
@@ -569,6 +610,46 @@ private struct GateHero: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(Palette.surfaceStroke, lineWidth: 1)
         )
+    }
+
+    @ViewBuilder
+    private var creditTrailingContent: some View {
+        if goalsFullyMet == true {
+            Label("Goals complete", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(Palette.open)
+        } else if let available = availableToClaimMinutes, available > 0 {
+            HStack(spacing: 6) {
+                Text("+\(formatMinutes(available)) to claim")
+                    .font(.caption)
+                    .foregroundStyle(Palette.waived)
+
+                Button {
+                    Task { await onClaim() }
+                } label: {
+                    if isClaiming {
+                        ProgressView()
+                            .scaleEffect(0.6)
+                            .frame(width: 14, height: 14)
+                    } else {
+                        Text("Claim")
+                            .font(.caption.weight(.semibold))
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.mini)
+                .tint(Palette.waived)
+                .disabled(isClaiming)
+            }
+        } else if let remaining = remainingMinutes {
+            Text(remaining > 0 ? "\(formatMinutes(remaining)) left" : "Balance spent")
+                .font(.caption)
+                .foregroundStyle(remaining > 0 ? Palette.textSecondary : Palette.locked)
+        } else {
+            Text("Gate controller")
+                .font(.caption)
+                .foregroundStyle(Palette.textSecondary)
+        }
     }
 }
 
