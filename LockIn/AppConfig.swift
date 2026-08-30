@@ -18,6 +18,7 @@ enum AppConfig {
 
         static let statusPath = "/status"
         static let syncPath = "/sync"
+        static let claimPath = "/claim"
         static let waiveoffStatusPath = "/waiveoff/status"
         static let waiveoffPath = "/waiveoff"
 

@@ -1,5 +1,52 @@
 import SwiftUI
 
+// MARK: - Design Tokens
+
+//
+// LockIn's whole premise is a physical gate that only opens when the day's
+// goals are met, so the UI leans into that: a dark "control panel" surface,
+// one accent color that means "open" and one that means "restricted," and a
+// ring motif — each goal closes its own ring, the hero dial is the sum of
+// them. Nothing here is decorative; every ring, dot, and capsule reports a
+// real piece of state from GymTracker / HealthKitManager / NetworkManager.
+
+private extension Color {
+    init(hex: UInt, alpha: Double = 1) {
+        self.init(
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255,
+            opacity: alpha
+        )
+    }
+}
+
+private enum Palette {
+    static let background = Color(hex: 0x0A0B0D)
+    static let surface = Color(hex: 0x15171A)
+    static let surfaceStroke = Color(hex: 0x24272B)
+    static let textPrimary = Color(hex: 0xEDEEF0)
+    static let textSecondary = Color(hex: 0x9A9EA6)
+    static let open = Color(hex: 0x3DDC84)
+    static let started = Color(hex: 0x4A9EFF)
+    static let locked = Color(hex: 0xFF5A5A)
+    static let waived = Color(hex: 0xFFB648)
+    static let neutral = Color(hex: 0x4C5561)
+}
+
+private enum Typography {
+    static func display(_ size: CGFloat, weight: Font.Weight = .heavy) -> Font {
+        .system(size: size, weight: weight, design: .rounded)
+    }
+
+    static var eyebrow: Font {
+        .system(.caption, design: .monospaced).weight(.semibold)
+    }
+}
+
+// MARK: - Content View
+
 struct ContentView: View {
     @StateObject private var healthKit = HealthKitManager.shared
     @StateObject private var network = NetworkManager.shared
@@ -9,51 +56,51 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var lastSyncStatus: String = ""
-
-    // MARK: - Waive-off UI state
-
     @State private var waiveOffAlertType: NetworkManager.WaiveOffType?
     @State private var waiveOffError: String?
+    @State private var isClaiming = false
 
-    private var checkButtonsHeight: CGFloat = 38
+    private let checkButtonsHeight: CGFloat = 46
 
-    /// One spacing scale, used everywhere in this screen instead of ad hoc
-    /// numbers, so the same kind of relationship always gets the same gap.
-    private enum Spacing {
-        /// Icon ↔ tiny inline text (location caption, ticket count).
-        static let micro: CGFloat = 4
-        /// Icon ↔ label inside a button, or a small icon-led detail row.
-        static let iconText: CGFloat = 6
-        /// Row ↔ row within a single card (header, body, footer).
-        static let row: CGFloat = 8
-        /// An interactive control ↔ its explanatory caption below it.
-        static let group: CGFloat = 12
-        /// Card ↔ next card's section (Form section spacing).
-        static let section: CGFloat = 40
-        /// Vertical breathing room inside a card, above/below its content.
-        static let cardPadding: CGFloat = 4
-    }
-
-    // MARK: - Body
+    // MARK: Body
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section() { stepsCard }
-                Section() { gymCard }
-                Section() { leetCodeCard }
-                Section() { deviceStatusCard }
+            ScrollView {
+                VStack(spacing: 15) {
+                    stepsCard
+                    gymCard
+                    leetCodeCard
+
+                    GateHero(
+                        isOpen: network.isGateOpen,
+                        deviceOnline: network.connectionStatus == .online,
+                        errorMessage: networkErrorMessage,
+                        goalsFullyMet: network.goalsFullyMet,
+                        availableToClaimMinutes: network.availableToClaimMinutes,
+                        remainingMinutes: network.remainingMinutesToday,
+                        isClaiming: isClaiming,
+                        onClaim: { await claimCredit() }
+                    )
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
             }
-            .listSectionSpacing(Spacing.section)
+            .background(Palette.background.ignoresSafeArea())
             .scrollIndicators(.hidden)
-            .safeAreaPadding(.bottom, 16)
             .navigationTitle("LockIn")
             .navigationBarTitleDisplayMode(.inline)
-            .task {
-                await refresh()
-            }
+            .toolbarBackground(Palette.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .task { await refresh() }
             .refreshable {
-                await refresh()
+                await withCheckedContinuation { continuation in
+                    Task {
+                        await refresh()
+                        continuation.resume()
+                    }
+                }
             }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
@@ -61,140 +108,139 @@ struct ContentView: View {
                 }
             }
             .onAppear {
-                UIRefreshControl.appearance().tintColor = .green
+                UIRefreshControl.appearance().tintColor = UIColor(Color.green)
                 gymTracker.requestLocationPermissionIfNeeded()
             }
-            .alert("Use a waive-off?", isPresented: Binding(
-                get: { waiveOffAlertType != nil },
-                set: {
-                    if !$0 {
-                        waiveOffAlertType = nil
-                    }
-                }
-            )) {
+            .alert("Use a waive-off?", isPresented: waiveOffPromptBinding) {
                 Button("Cancel", role: .cancel) { waiveOffAlertType = nil }
-                Button("Use waive-off") {
-                    if let type = waiveOffAlertType {
-                        Task {
-                            do {
-                                try await network.useWaiveOff(type)
-                            } catch {
-                                waiveOffError = error.localizedDescription
-                            }
-                            waiveOffAlertType = nil
-                        }
-                    }
-                }
+                Button("Use waive-off") { confirmWaiveOff() }
             } message: {
                 Text(waiveOffAlertMessage(for: waiveOffAlertType))
             }
-            .alert("Couldn't use waive-off", isPresented: Binding(
-                get: { waiveOffError != nil },
-                set: {
-                    if !$0 {
-                        waiveOffError = nil
-                    }
-                }
-            )) {
+            .alert("Couldn't use waive-off", isPresented: waiveOffErrorBinding) {
                 Button("OK", role: .cancel) { waiveOffError = nil }
             } message: {
                 Text(waiveOffError ?? "")
             }
         }
+        .preferredColorScheme(.dark)
     }
 
-    // MARK: - 1. Steps Card
-
-    @ViewBuilder
-    private var stepsCard: some View {
-        let isGoalCompleted = healthKit.areTodaysStepsCompleted
-        VStack(alignment: .leading, spacing: Spacing.row) {
-            HStack {
-                Label("Steps", systemImage: "figure.walk")
-                    .font(.subheadline)
-                    .bold()
-
-                Spacer()
-
-                let stepsWaived = network.waiveOffStatus?.stepsWaivedToday ?? false
-
-                if !isGoalCompleted, !stepsWaived, let status = network.waiveOffStatus {
-                    waiveOffBadge(remaining: status.stepsRemaining, type: .steps)
-                }
-
-                goalStatusIcon(isCompleted: isGoalCompleted, waivedToday: stepsWaived)
+    private var waiveOffPromptBinding: Binding<Bool> {
+        Binding(get: { waiveOffAlertType != nil }, set: {
+            if !$0 {
+                waiveOffAlertType = nil
             }
+        })
+    }
 
-            HStack(alignment: .firstTextBaseline) {
-                Text("\(healthKit.todaySteps)")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .contentTransition(.numericText())
-
-                Text("/ \(healthKit.targetSteps) steps")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
+    private var waiveOffErrorBinding: Binding<Bool> {
+        Binding(get: { waiveOffError != nil }, set: {
+            if !$0 {
+                waiveOffError = nil
             }
+        })
+    }
+
+    private func confirmWaiveOff() {
+        guard let type = waiveOffAlertType else { return }
+        Task {
+            do {
+                try await network.useWaiveOff(type)
+            } catch {
+                waiveOffError = error.localizedDescription
+            }
+            waiveOffAlertType = nil
         }
-        .padding(.vertical, Spacing.cardPadding)
     }
 
-    // MARK: - 2. Gym Card
+    // MARK: - Steps Card
+
+    // Mirrors the firmware's STEPS_PER_CREDIT_CHUNK (1000 steps = +10m,
+    // capped at the daily target) — kept in sync manually with
+    // dns_filter.ino's tieredMinutesFromProgress(). Computed locally from
+    // HealthKit data the app already has, rather than round-tripping
+    // through the ESP32, so it's live rather than only as fresh as the
+    // last /sync.
+    private var stepsUntilNextChunk: Int? {
+        let chunk = 1000
+        let steps = healthKit.todaySteps
+        let target = healthKit.targetSteps
+        guard steps < target else { return nil }
+        let nextThreshold = min(((steps / chunk) + 1) * chunk, target)
+        let remaining = nextThreshold - steps
+        return remaining > 0 ? remaining : nil
+    }
+
+    private var stepsCard: some View {
+        let isCompleted = healthKit.areTodaysStepsCompleted
+        let waived = network.waiveOffStatus?.stepsWaivedToday ?? false
+        let progress = healthKit.targetSteps > 0
+            ? Double(healthKit.todaySteps) / Double(healthKit.targetSteps) : 0
+
+        return GoalCardShell(
+            title: "Steps",
+            icon: "figure.walk",
+            progress: progress,
+            color: goalColor(progress: progress, isCompleted: isCompleted, waived: waived),
+            isCompleted: isCompleted,
+            waived: waived,
+            waiveRemaining: network.waiveOffStatus?.stepsRemaining,
+            onTapWaiveOff: { waiveOffAlertType = .steps }
+        ) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(healthKit.todaySteps)")
+                    .font(Typography.display(28))
+                    .foregroundStyle(Palette.textPrimary)
+                    .contentTransition(.numericText())
+                Text("of \(healthKit.targetSteps) steps")
+                    .font(.caption)
+                    .foregroundStyle(Palette.textSecondary)
+                if let remaining = stepsUntilNextChunk, remaining > 0 {
+                    Text("\(remaining) to next +10m")
+                        .font(.caption2)
+                        .foregroundStyle(Palette.neutral)
+                }
+            }
+        } footer: {
+            EmptyView()
+        }
+    }
+
+    // MARK: - Gym Card
 
     private var gymCard: some View {
-        VStack(alignment: .leading, spacing: Spacing.row) {
-            gymHeaderRow
-            gymActionButton
-        }
-        .padding(.vertical, Spacing.cardPadding)
-    }
+        let isCompleted = gymTracker.isGymSessionCompleted
+        let waived = network.waiveOffStatus?.gymWaivedToday ?? false
+        let progress = gymTracker.targetGymDurationSeconds > 0
+            ? gymTracker.totalSecondsToday / gymTracker.targetGymDurationSeconds : 0
 
-    /// Plain location fact, shown as a caption under the check-in/check-out
-    /// button. The button's own label and enabled state already say what to
-    /// do about it, so this just states where you are.
-    @ViewBuilder
-    private var gymGuidanceLabel: some View {
-        if gymTracker.isInsideGeofence {
-            gymGuidanceRow(icon: "location.fill", text: "Inside gym zone")
-        } else if gymTracker.distanceToGym != nil {
-            gymGuidanceRow(icon: "location", text: formattedDistance)
-        } else {
-            gymGuidanceRow(icon: "location.slash", text: "Location unknown")
-        }
-    }
-
-    private func gymGuidanceRow(icon: String, text: String) -> some View {
-        HStack(spacing: Spacing.micro) {
-            Image(systemName: icon)
-            Text(text)
-        }
-    }
-
-    private var formattedDistance: String {
-        guard let distance = gymTracker.distanceToGym else { return "" }
-        return distance >= 1000
-            ? String(format: "%.1f km away", distance / 1000)
-            : String(format: "%.0f m away", distance)
-    }
-
-    @ViewBuilder
-    private var gymHeaderRow: some View {
-        let isGoalCompleted = gymTracker.isGymSessionCompleted
-        HStack {
-            Label("Workout", systemImage: "dumbbell.fill")
-                .font(.subheadline)
-                .bold()
-
-            Spacer()
-
-            let gymWaived = network.waiveOffStatus?.gymWaivedToday ?? false
-
-            if !isGoalCompleted, !gymWaived, let status = network.waiveOffStatus {
-                waiveOffBadge(remaining: status.gymRemaining, type: .gym)
+        return GoalCardShell(
+            title: "Workout",
+            icon: "dumbbell.fill",
+            progress: progress,
+            color: goalColor(progress: progress, isCompleted: isCompleted, waived: waived),
+            isCompleted: isCompleted,
+            waived: waived,
+            waiveRemaining: network.waiveOffStatus?.gymRemaining,
+            onTapWaiveOff: { waiveOffAlertType = .gym }
+        ) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(Int(gymTracker.totalSecondsToday) / 60) min")
+                    .font(Typography.display(22))
+                    .foregroundStyle(Palette.textPrimary)
+                Text("of \(gymTracker.targetGymDurationMinutes) min target")
+                    .font(.caption)
+                    .foregroundStyle(Palette.textSecondary)
+                if !isCompleted {
+                    Text("Full session: +45m")
+                        .font(.caption2)
+                        .foregroundStyle(Palette.neutral)
+                }
             }
-
-            goalStatusIcon(isCompleted: isGoalCompleted, waivedToday: gymWaived)
+        } footer: {
+            gymActionButton
+                .padding(.top, 2)
         }
     }
 
@@ -207,73 +253,92 @@ struct ContentView: View {
                 let canCheckOut = elapsed >= gymTracker.targetGymDurationSeconds
                 let readyToCheckOut = canCheckOut && gymTracker.isInsideGeofence
 
-                VStack(spacing: Spacing.group) {
+                VStack(spacing: 10) {
                     Button {
                         gymTracker.checkOut()
                     } label: {
-                        HStack(spacing: Spacing.iconText) {
+                        HStack(spacing: 8) {
                             Image(systemName: canCheckOut ? "figure.walk.departure" : "timer")
                             Text(canCheckOut ? "Check Out" : timeString(from: remaining))
                                 .monospacedDigit()
                         }
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
+                        .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: checkButtonsHeight)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(readyToCheckOut ? .red : (canCheckOut ? .gray : .green))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(readyToCheckOut ? Palette.background : Palette.textSecondary)
+                    .background(Capsule().fill(readyToCheckOut ? Palette.locked : Palette.surfaceStroke))
                     .disabled(!readyToCheckOut)
 
                     gymGuidanceLabel
-                        .font(.caption2)
-                        .foregroundStyle(gymTracker.isInsideGeofence ? .green : .secondary)
                 }
             }
         } else if gymTracker.hasCheckedOutToday {
-            VStack(spacing: Spacing.group) {
-                Button {} label: {
-                    HStack(spacing: Spacing.iconText) {
-                        Image(systemName: "checkmark.circle.fill")
-                        Text("Session complete")
-                    }
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: checkButtonsHeight)
+            VStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("Session complete")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.gray.opacity(0.3))
-                .foregroundStyle(.green)
-                .allowsHitTesting(false)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Palette.open)
+                .frame(maxWidth: .infinity)
+                .frame(height: checkButtonsHeight)
+                .background(Capsule().fill(Palette.open.opacity(0.12)))
 
                 Text(workoutDurationText)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.textSecondary)
             }
         } else {
-            VStack(spacing: Spacing.group) {
+            VStack(spacing: 10) {
                 Button {
                     gymTracker.checkIn()
                 } label: {
-                    HStack(spacing: Spacing.iconText) {
+                    HStack(spacing: 8) {
                         Image(systemName: "figure.strengthtraining.traditional")
                         Text("Check In")
                     }
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+                    .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .frame(height: checkButtonsHeight)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.green)
+                .buttonStyle(.plain)
+                .foregroundStyle(gymTracker.isInsideGeofence ? Palette.background : Palette.textSecondary)
+                .background(Capsule().fill(gymTracker.isInsideGeofence ? Palette.open : Palette.surfaceStroke))
                 .disabled(!gymTracker.isInsideGeofence)
 
                 gymGuidanceLabel
-                    .font(.caption2)
-                    .foregroundStyle(gymTracker.isInsideGeofence ? .green : .secondary)
             }
         }
+    }
+
+    private var gymGuidanceLabel: some View {
+        Group {
+            if gymTracker.isInsideGeofence {
+                gymGuidanceRow(icon: "location.fill", text: "Inside gym zone", tint: Palette.open)
+            } else if gymTracker.distanceToGym != nil {
+                gymGuidanceRow(icon: "location", text: formattedDistance, tint: Palette.textSecondary)
+            } else {
+                gymGuidanceRow(icon: "location.slash", text: "Location unknown", tint: Palette.textSecondary)
+            }
+        }
+        .font(.caption2)
+    }
+
+    private func gymGuidanceRow(icon: String, text: String, tint: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+            Text(text)
+        }
+        .foregroundStyle(tint)
+    }
+
+    private var formattedDistance: String {
+        guard let distance = gymTracker.distanceToGym else { return "" }
+        return distance >= 1000
+            ? String(format: "%.1f km away", distance / 1000)
+            : String(format: "%.0f m away", distance)
     }
 
     private var workoutDurationText: String {
@@ -284,173 +349,125 @@ struct ContentView: View {
         return "Workout duration: \(minutes) mins"
     }
 
-    // MARK: - 3. LeetCode Card
+    // MARK: - LeetCode Card
 
     private var leetCodeCard: some View {
-        VStack(alignment: .leading, spacing: Spacing.row) {
-            leetCodeHeaderRow
-            leetCodeCountRow
+        let isCompleted = leetCode.isGoalMet
+        let waived = network.waiveOffStatus?.leetcodeWaivedToday ?? false
 
-            Text("Difficulty Breakdown")
-                .font(.caption)
-                .fontWeight(.medium)
-                .foregroundStyle(.secondary)
-
-            leetCodeDifficultyBreakdown
-        }
-        .padding(.vertical, Spacing.cardPadding)
-    }
-
-    @ViewBuilder
-    private var leetCodeHeaderRow: some View {
-        let isGoalCompleted = leetCode.isGoalMet
-        HStack {
-            Label("LeetCode", systemImage: "chevron.left.forwardslash.chevron.right")
-                .font(.subheadline)
-                .bold()
-
-            Spacer()
-
-            let leetcodeWaived = network.waiveOffStatus?.leetcodeWaivedToday ?? false
-
-            if !isGoalCompleted, !leetcodeWaived, let status = network.waiveOffStatus {
-                waiveOffBadge(remaining: status.leetcodeRemaining, type: .leetcode)
+        return GoalCardShell(
+            title: "Leetcode",
+            icon: "chevron.left.forwardslash.chevron.right",
+            progress: leetCode.progress,
+            color: goalColor(progress: leetCode.progress, isCompleted: isCompleted, waived: waived),
+            isCompleted: isCompleted,
+            waived: waived,
+            waiveRemaining: network.waiveOffStatus?.leetcodeRemaining,
+            onTapWaiveOff: { waiveOffAlertType = .leetcode }
+        ) {
+            VStack(alignment: .leading, spacing: 2) {
+                if leetCode.isLoading {
+                    ProgressView()
+                        .tint(Palette.textSecondary)
+                } else {
+                    Text("\(leetCode.totalTodayCount)")
+                        .font(Typography.display(28))
+                        .foregroundStyle(Palette.textPrimary)
+                        .contentTransition(.numericText())
+                }
+                Text("of \(leetCode.targetProblems) problems")
+                    .font(.caption)
+                    .foregroundStyle(Palette.textSecondary)
             }
-
-            if leetCode.isLoading {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                goalStatusIcon(isCompleted: isGoalCompleted, waivedToday: leetcodeWaived)
-            }
+        } footer: {
+            difficultyBreakdown
+                .padding(.top, 4)
         }
     }
 
-    private var leetCodeCountRow: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("\(leetCode.totalTodayCount)")
-                .font(.system(size: 32, weight: .bold, design: .rounded))
-                .contentTransition(.numericText())
-
-            Text("/ \(leetCode.targetProblems) problems")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            Spacer()
+    private var difficultyBreakdown: some View {
+        HStack(spacing: 0) {
+            difficultyColumn(label: "EASY", count: leetCode.easyTodayCount, creditLabel: "+5m", color: Palette.open)
+            Divider().overlay(Palette.surfaceStroke).frame(height: 20)
+            difficultyColumn(label: "MEDIUM", count: leetCode.mediumTodayCount, creditLabel: "+10m", color: Palette.waived)
+            Divider().overlay(Palette.surfaceStroke).frame(height: 20)
+            difficultyColumn(label: "HARD", count: leetCode.hardTodayCount, creditLabel: "+15m", color: Palette.locked)
         }
     }
 
-    private var leetCodeDifficultyBreakdown: some View {
-        HStack {
-            leetCodeDifficultyColumn(label: "EASY", count: leetCode.easyTodayCount, color: .green)
-
-            Divider()
-                .frame(height: 20)
-
-            leetCodeDifficultyColumn(label: "MEDIUM", count: leetCode.mediumTodayCount, color: .orange)
-
-            Divider()
-                .frame(height: 20)
-
-            leetCodeDifficultyColumn(label: "HARD", count: leetCode.hardTodayCount, color: .red)
-        }
-    }
-
-    private func leetCodeDifficultyColumn(label: String, count: Int, color: Color) -> some View {
-        VStack(spacing: Spacing.micro) {
+    private func difficultyColumn(label: String, count: Int, creditLabel: String, color: Color) -> some View {
+        VStack(spacing: 2) {
             Text(label)
-                .font(.caption2)
-                .fontWeight(.bold)
+                .font(.caption2.weight(.bold))
                 .foregroundStyle(color)
-
             Text("\(count)")
-                .font(.subheadline)
-                .fontWeight(.bold)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(Palette.textPrimary)
+            Text(creditLabel)
+                .font(.system(size: 9))
+                .foregroundStyle(Palette.textSecondary)
         }
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - 4. Device Status Card
+    // MARK: - Shared Helpers
 
-    private var deviceStatusCard: some View {
-        VStack(alignment: .leading, spacing: Spacing.row) {
-            HStack {
-                Label("Internet Access", systemImage: "wifi")
-                    .font(.subheadline)
-                    .bold()
-
-                Spacer()
-
-                Image(systemName: gateIconName)
-                    .font(.title3)
-                    .foregroundStyle(internetStatus.color)
-            }
-
-            HStack(spacing: Spacing.iconText) {
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 6, height: 6)
-
-                Text("Gate Controller")
-                    .foregroundStyle(.secondary)
-
-                Text("•")
-                    .foregroundStyle(.tertiary)
-
-                Text(statusLabel)
-                    .foregroundStyle(statusColor)
-                    .fontWeight(.medium)
-            }
-            .font(.caption)
-
-            deviceStatusFooter
+    /// Grey: not started. Blue: started, not yet complete. Green: goal met.
+    /// Orange: a waive-off covered the day instead. `isCompleted` wins over
+    /// `waived` since actually meeting the goal outranks skipping it.
+    private func goalColor(progress: Double, isCompleted: Bool, waived: Bool) -> Color {
+        if isCompleted {
+            return Palette.open
         }
-        .padding(.vertical, Spacing.cardPadding)
+        if waived {
+            return Palette.waived
+        }
+        if progress > 0 {
+            return Palette.started
+        }
+        return Palette.neutral
     }
 
-    @ViewBuilder
-    private var deviceStatusFooter: some View {
-        if let message = networkErrorMessage {
-            Text(message)
-                .font(.caption2)
-                .foregroundStyle(.orange)
-        } else if let lastChecked = network.lastCheckedAt {
-            HStack {
-                Text("Last Verified")
-                Spacer()
-                Text(lastChecked.formatted(date: .omitted, time: .shortened))
-            }
-            .font(.caption)
-            .foregroundStyle(.tertiary)
+    private func timeString(from seconds: TimeInterval) -> String {
+        let total = max(Int(seconds), 0)
+        let minutes = total / 60
+        let secs = total % 60
+        return String(format: "%02d:%02d", minutes, secs)
+    }
+
+    private var networkErrorMessage: String? {
+        if !lastSyncStatus.isEmpty {
+            return lastSyncStatus
         }
+        if network.waiveOffStatus == nil, let waiveOffError = network.waiveOffFetchError {
+            return waiveOffError
+        }
+        if let leetCodeError = leetCode.errorMessage {
+            return leetCodeError
+        }
+        return nil
     }
 
     // MARK: - Waive-off Alert Message
 
-    /// Percent complete (0–100, clamped) for a given goal type, based on the
-    /// same live values already shown on each card.
     private func waiveOffProgressPercent(for type: NetworkManager.WaiveOffType) -> Int {
-        let fraction: Double
-        switch type {
+        let fraction: Double = switch type {
         case .steps:
-            fraction = healthKit.targetSteps > 0
+            healthKit.targetSteps > 0
                 ? Double(healthKit.todaySteps) / Double(healthKit.targetSteps)
                 : 0
         case .gym:
-            fraction = gymTracker.targetGymDurationSeconds > 0
+            gymTracker.targetGymDurationSeconds > 0
                 ? gymTracker.totalSecondsToday / gymTracker.targetGymDurationSeconds
                 : 0
         case .leetcode:
-            fraction = leetCode.targetProblems > 0
+            leetCode.targetProblems > 0
                 ? Double(leetCode.totalTodayCount) / Double(leetCode.targetProblems)
                 : 0
         }
         return min(max(Int((fraction * 100).rounded(.down)), 0), 100)
     }
 
-    /// Builds the confirmation message for the "Use a waive-off?" alert.
-    /// Leads with a progress callout — only when the goal is already at
-    /// least halfway done — followed by the standard cost-of-claiming line.
     private func waiveOffAlertMessage(for type: NetworkManager.WaiveOffType?) -> String {
         let baseMessage = "This uses one of your limited weekly waive-off cards for today."
         guard let type else { return baseMessage }
@@ -461,140 +478,363 @@ struct ContentView: View {
         return "You're already \(percent)% of the way there — you may not need it. \(baseMessage)"
     }
 
-    // MARK: - Waive-off Badge
-
-    /// Ticket button used to *spend* a waive-off. Only ever shown when the goal
-    /// is still open and hasn't been waived yet — the "already waived" case is
-    /// now handled entirely by `goalStatusIcon` so we don't double up indicators.
-    @ViewBuilder
-    private func waiveOffBadge(remaining: Int, type: NetworkManager.WaiveOffType) -> some View {
-        Button {
-            waiveOffAlertType = type
-        } label: {
-            HStack(spacing: Spacing.micro) {
-                Image(systemName: "ticket.fill")
-                Text("\(remaining) left")
-                    .fontWeight(.bold)
-            }
-            .font(.subheadline)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background((remaining > 0 ? Color.blue : Color.gray).opacity(0.12))
-            .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(remaining <= 0)
-        .foregroundStyle(remaining > 0 ? .blue : .secondary)
-    }
-
-    /// Single trailing status glyph for a goal card. Collapses "completed" and
-    /// "waived" into one indicator instead of showing a seal badge next to an
-    /// unrelated empty circle.
-    @ViewBuilder
-    private func goalStatusIcon(isCompleted: Bool, waivedToday: Bool) -> some View {
-        if isCompleted {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.title3)
-                .foregroundStyle(.green)
-        } else if waivedToday {
-            Image(systemName: "checkmark.seal")
-                .font(.title3)
-                .foregroundStyle(.orange)
-        } else {
-            Image(systemName: "circle")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    // MARK: - Derived Status
-
-    /// Single source of truth for the error line under Device Status.
-    /// Every network path — gate sync, waive-off fetch, LeetCode fetch —
-    /// funnels through here so there's one place, one message, one color.
-    private var networkErrorMessage: String? {
-        if !lastSyncStatus.isEmpty { return lastSyncStatus }
-        if network.waiveOffStatus == nil, let waiveOffError = network.waiveOffFetchError {
-            return waiveOffError
-        }
-        if let leetCodeError = leetCode.errorMessage { return leetCodeError }
-        return nil
-    }
-
-    private var statusColor: Color {
-        switch network.connectionStatus {
-        case .online: .green
-        case .offline: .red
-        case .unknown: .orange
-        }
-    }
-
-    private var statusLabel: String {
-        switch network.connectionStatus {
-        case .online: "Online"
-        case .offline: "Offline"
-        case .unknown: "Checking…"
-        }
-    }
-
-    private var internetStatus: (label: String, color: Color) {
-        switch network.isGateOpen {
-        case .some(true): ("Full Access", .green)
-        case .some(false): ("Restricted", .red)
-        case .none: ("Unknown", .orange)
-        }
-    }
-
-    private var gateIconName: String {
-        switch network.isGateOpen {
-        case .some(true): "lock.open.fill"
-        case .some(false): "lock.fill"
-        case .none: "questionmark.circle.fill"
-        }
-    }
-
-    private func timeString(from seconds: TimeInterval) -> String {
-        let total = max(Int(seconds), 0)
-        let minutes = total / 60
-        let seconds = total % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
-
     // MARK: - Sync
 
     private func refresh() async {
+
         lastSyncStatus = ""
 
         do {
-            // 1. Refresh location so isInsideGeofence reflects the current position
-            gymTracker.refreshLocation()
+            gymTracker.checkDailyCheckoutStatus()
 
-            // 2. Check the gate controller's online status via GET /status
+            gymTracker.refreshLocation()
             await network.checkStatus()
 
-            // 3. Fetch local metrics
             await healthKit.syncSteps()
             let steps = healthKit.todaySteps
 
-            gymTracker.checkDailyCheckoutStatus()
             gymTracker.loadTodayAccumulatedTime()
             let gymSeconds = Int(gymTracker.totalSecondsToday)
 
             await leetCode.fetchTodaySolvedProblems()
 
-            // 4. Send metrics to update Internet Access status via POST /sync
             try await NetworkManager.shared.sendSync(
                 steps: steps,
                 gymSeconds: gymSeconds,
-                leetCodeSolved: leetCode.totalTodayCount
+                leetCodeEasy: leetCode.easyTodayCount,
+                leetCodeMedium: leetCode.mediumTodayCount,
+                leetCodeHard: leetCode.hardTodayCount
             )
 
-            // 5. Refresh waive-off balances (in case the ESP32 rolled over a new week)
             await network.fetchWaiveOffStatus()
-//            print("waiveOffStatus:", network.waiveOffStatus as Any)
-//            print("waiveOffFetchError:", network.waiveOffFetchError as Any)
         } catch {
+            print("sendSync failed: \(error)")
             lastSyncStatus = "Couldn't reach your gate device — \(error.localizedDescription)"
         }
+    }
+
+    private func claimCredit() async {
+        guard !isClaiming else { return }
+        isClaiming = true
+        defer { isClaiming = false }
+        do {
+            try await NetworkManager.shared.claim()
+        } catch {
+            lastSyncStatus = "Couldn't claim credit — \(error.localizedDescription)"
+        }
+    }
+}
+
+// MARK: - Gate Hero (Device Status Card)
+
+private struct GateHero: View {
+    let isOpen: Bool?
+    let deviceOnline: Bool
+    let errorMessage: String?
+    let goalsFullyMet: Bool?
+    let availableToClaimMinutes: Int?
+    let remainingMinutes: Int?
+    let isClaiming: Bool
+    let onClaim: () async -> Void
+
+    private var tint: Color {
+        switch isOpen {
+        case .some(true): Palette.open
+        case .some(false): Palette.locked
+        case .none: Palette.neutral
+        }
+    }
+
+    private var label: String {
+        switch isOpen {
+        case .some(true): goalsFullyMet == true ? "UNLOCKED FOR TODAY" : "OPEN — SPENDING BALANCE"
+        case .some(false): "RESTRICTED"
+        case .none: "UNKNOWN"
+        }
+    }
+
+    private var icon: String {
+        switch isOpen {
+        case .some(true): "lock.open.fill"
+        case .some(false): "lock.fill"
+        case .none: "questionmark"
+        }
+    }
+
+    private func formatMinutes(_ minutes: Int) -> String {
+        let h = minutes / 60
+        let m = minutes % 60
+        if h > 0 && m > 0 { return "\(h)h \(m)m" }
+        if h > 0 { return "\(h)h" }
+        return "\(m)m"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            identityRow
+
+            Divider().overlay(Palette.surfaceStroke)
+
+            creditRow
+
+            if let errorMessage {
+                errorRow(errorMessage)
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Palette.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Palette.surfaceStroke, lineWidth: 1)
+        )
+    }
+
+    // MARK: Identity row (icon + status label + online pill)
+
+    private var identityRow: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.15))
+                    .frame(width: 56, height: 56)
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(tint)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .animation(.easeInOut(duration: 0.3), value: isOpen)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("GATE STATUS")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(Palette.textSecondary)
+                Text(label)
+                    .font(Typography.eyebrow)
+                    .tracking(0.8)
+                    .foregroundStyle(tint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            onlinePill
+        }
+    }
+
+    private var onlinePill: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(deviceOnline ? Palette.open : Palette.locked)
+                .frame(width: 6, height: 6)
+            Text(deviceOnline ? "ONLINE" : "OFFLINE")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(1)
+        }
+        .foregroundStyle(Palette.textSecondary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(Palette.background.opacity(0.6)))
+        .overlay(Capsule().stroke(Palette.surfaceStroke, lineWidth: 1))
+    }
+
+    // MARK: Credit row
+
+    private var creditIcon: String {
+        if goalsFullyMet == true { return "checkmark.circle.fill" }
+        if let available = availableToClaimMinutes, available > 0 { return "bolt.fill" }
+        if let remaining = remainingMinutes, remaining > 0 { return "clock.fill" }
+        return "lock.fill"
+    }
+
+    private var creditText: String {
+        if goalsFullyMet == true { return "Goals complete — unlocked" }
+        if let available = availableToClaimMinutes, available > 0 { return "+\(formatMinutes(available)) to claim" }
+        if let remaining = remainingMinutes { return remaining > 0 ? "\(formatMinutes(remaining)) left" : "Balance spent" }
+        return "Gate controller"
+    }
+
+    private var creditTint: Color {
+        if goalsFullyMet == true { return Palette.open }
+        if let available = availableToClaimMinutes, available > 0 { return Palette.waived }
+        if let remaining = remainingMinutes { return remaining > 0 ? Palette.textSecondary : Palette.locked }
+        return Palette.textSecondary
+    }
+
+    private var showsClaimButton: Bool {
+        goalsFullyMet != true && (availableToClaimMinutes ?? 0) > 0
+    }
+
+    private var creditRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: creditIcon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(creditTint)
+                .frame(width: 18)
+
+            Text(creditText)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Palette.textPrimary)
+
+            Spacer(minLength: 8)
+
+            if showsClaimButton {
+                claimButton
+            }
+        }
+    }
+
+    // Outlined pill, same recipe as `onlinePill` above (translucent dark
+    // fill + a 1pt stroke) so it reads as part of this card's own visual
+    // language rather than a system button dropped in. Tinted green since
+    // claiming is the positive action — moves earned progress into
+    // spendable balance — as opposed to the waive-off ticket's amber, which
+    // signals "skipping today," a different kind of action entirely.
+    private var claimButton: some View {
+        Button {
+            Task { await onClaim() }
+        } label: {
+            HStack(spacing: 5) {
+                if isClaiming {
+                    ProgressView()
+                        .scaleEffect(0.55)
+                        .frame(width: 12, height: 12)
+                } else {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Claim")
+                        .font(.system(size: 12, weight: .bold))
+                }
+            }
+            .foregroundStyle(Palette.open)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Palette.open.opacity(0.12)))
+            .overlay(Capsule().stroke(Palette.open.opacity(0.4), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(isClaiming)
+    }
+
+    // MARK: Error row
+
+    private func errorRow(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2)
+            Text(message)
+                .font(.caption2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(Palette.waived)
+    }
+}
+
+// MARK: - Ring Progress
+
+private struct RingProgress: View {
+    let progress: Double
+    let color: Color
+    let lineWidth: CGFloat
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Palette.surfaceStroke, lineWidth: lineWidth)
+            Circle()
+                .trim(from: 0, to: max(0.0015, min(progress, 1)))
+                .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.easeInOut(duration: 0.5), value: progress)
+        }
+    }
+}
+
+// MARK: - Goal Card Shell
+
+private struct GoalCardShell<Content: View, Footer: View>: View {
+    let title: String
+    let icon: String
+    let progress: Double
+    let color: Color
+    let isCompleted: Bool
+    let waived: Bool
+    let waiveRemaining: Int?
+    let onTapWaiveOff: () -> Void
+    @ViewBuilder let content: Content
+    @ViewBuilder let footer: Footer
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            header
+            HStack(spacing: 16) {
+                ZStack {
+                    RingProgress(progress: progress, color: color, lineWidth: 7)
+                        .frame(width: 56, height: 56)
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                content
+                Spacer(minLength: 0)
+            }
+            footer
+        }
+        .padding(16)
+        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Palette.surfaceStroke, lineWidth: 1)
+        )
+    }
+
+    private var header: some View {
+        HStack {
+            Text(title.uppercased())
+                .font(Typography.eyebrow)
+                .tracking(1.5)
+                .foregroundStyle(Palette.textSecondary)
+
+            Spacer()
+
+            if !isCompleted, !waived, let waiveRemaining {
+                TicketBadge(remaining: waiveRemaining, action: onTapWaiveOff)
+            }
+        }
+    }
+}
+
+// Same recipe as GateHero's `onlinePill` and `claimButton` — translucent
+// dark fill + a 1pt stroke in the semantic color, rather than a solid
+// filled chip. "calendar.badge.minus" reads as "skip today" more directly
+// than a ticket icon, whose usual connotation is redeeming for something
+// rather than opting out of it.
+private struct TicketBadge: View {
+    let remaining: Int
+    let action: () -> Void
+
+    private var tint: Color {
+        remaining > 0 ? Palette.waived : Palette.textSecondary
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "ticket.fill")
+                    .font(.system(size: 10, weight: .bold))
+                Text("\(remaining)")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(Palette.background.opacity(0.5)))
+            .overlay(Capsule().stroke(remaining > 0 ? tint.opacity(0.4) : Palette.surfaceStroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(remaining <= 0)
     }
 }

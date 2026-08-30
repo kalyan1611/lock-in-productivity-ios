@@ -31,6 +31,13 @@ final class NetworkManager: ObservableObject {
     @Published var gymGoalMet: Bool?
     @Published var leetCodeGoalMet: Bool?
 
+    // Credit system (driven by sendSync() and claim())
+    @Published var goalsFullyMet: Bool?
+    @Published var potentialMinutesToday: Int?
+    @Published var claimedMinutesToday: Int?
+    @Published var availableToClaimMinutes: Int?
+    @Published var remainingMinutesToday: Int?
+
     enum WaiveOffType: String { case gym, steps, leetcode }
 
     struct WaiveOffStatus: Codable {
@@ -112,11 +119,26 @@ final class NetworkManager: ObservableObject {
         let gymGoalMet: Bool
         let leetCodeGoalMet: Bool?
         let isGateOpen: Bool
+        let goalsFullyMet: Bool?
+        let potentialMinutesToday: Int?
+        let claimedMinutesToday: Int?
+        let availableToClaimMinutes: Int?
+        let remainingMinutesToday: Int?
+    }
+
+    struct ClaimResult: Decodable {
+        let status: String
+        let justClaimedMinutes: Int
+        let claimedMinutesToday: Int
+        let availableToClaimMinutes: Int
+        let remainingMinutesToday: Int
+        let isGateOpen: Bool
+        let goalsFullyMet: Bool
     }
 
     @discardableResult
     @MainActor
-    func sendSync(steps: Int, gymSeconds: Int, leetCodeSolved: Int) async throws -> SyncResult {
+    func sendSync(steps: Int, gymSeconds: Int, leetCodeEasy: Int, leetCodeMedium: Int, leetCodeHard: Int) async throws -> SyncResult {
         guard let url = URL(string: esp32BaseURL + AppConfig.Gate.syncPath) else {
             throw SyncError(message: "Invalid ESP32 address")
         }
@@ -130,7 +152,9 @@ final class NetworkManager: ObservableObject {
         let payload: [String: Int] = [
             "steps": steps,
             "gymSeconds": gymSeconds,
-            "leetCodeSolved": leetCodeSolved,
+            "leetCodeEasy": leetCodeEasy,
+            "leetCodeMedium": leetCodeMedium,
+            "leetCodeHard": leetCodeHard,
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
@@ -153,12 +177,52 @@ final class NetworkManager: ObservableObject {
             stepGoalMet = result.stepGoalMet
             gymGoalMet = result.gymGoalMet
             leetCodeGoalMet = result.leetCodeGoalMet
+            goalsFullyMet = result.goalsFullyMet
+            potentialMinutesToday = result.potentialMinutesToday
+            claimedMinutesToday = result.claimedMinutesToday
+            availableToClaimMinutes = result.availableToClaimMinutes
+            remainingMinutesToday = result.remainingMinutesToday
 
             return result
         } catch {
             isGateOpen = nil
             throw error
         }
+    }
+
+    /// Locks in everything currently available (per the last sync) into
+    /// today's spendable balance.
+    @discardableResult
+    @MainActor
+    func claim() async throws -> ClaimResult {
+        guard let url = URL(string: esp32BaseURL + AppConfig.Gate.claimPath) else {
+            throw SyncError(message: "Invalid ESP32 address")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = AppConfig.Gate.Method.post
+        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
+        request.timeoutInterval = AppConfig.Gate.requestTimeout
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw SyncError(message: "Invalid response from ESP32")
+        }
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw SyncError(message: "Unauthorized: Invalid ESP32 API Key")
+        }
+        guard (200 ... 299).contains(httpResponse.statusCode) else {
+            throw SyncError(message: "ESP32 returned a non-success status")
+        }
+
+        let result = try JSONDecoder().decode(ClaimResult.self, from: data)
+        isGateOpen = result.isGateOpen
+        goalsFullyMet = result.goalsFullyMet
+        claimedMinutesToday = result.claimedMinutesToday
+        availableToClaimMinutes = result.availableToClaimMinutes
+        remainingMinutesToday = result.remainingMinutesToday
+
+        return result
     }
 
     /// Lightweight ping check determining Gate Controller online status strictly via GET /status
