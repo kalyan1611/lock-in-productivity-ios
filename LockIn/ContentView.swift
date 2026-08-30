@@ -67,11 +67,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                // Card-to-card spacing was tightened from 35 -> 20 to offset
-                // the taller GateHero card below, so the gap between the
-                // last card and the bottom of the screen stays the same as
-                // it was before the revamp.
-                VStack(spacing: 24) {
+                VStack(spacing: 15) {
                     stepsCard
                     gymCard
                     leetCodeCard
@@ -99,8 +95,6 @@ struct ContentView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task { await refresh() }
             .refreshable {
-                // This task ensures the system's refresh animation stays open
-                // without letting SwiftUI's view-tree updates kill your network calls.
                 await withCheckedContinuation { continuation in
                     Task {
                         await refresh()
@@ -162,6 +156,22 @@ struct ContentView: View {
 
     // MARK: - Steps Card
 
+    // Mirrors the firmware's STEPS_PER_CREDIT_CHUNK (1000 steps = +10m,
+    // capped at the daily target) — kept in sync manually with
+    // dns_filter.ino's tieredMinutesFromProgress(). Computed locally from
+    // HealthKit data the app already has, rather than round-tripping
+    // through the ESP32, so it's live rather than only as fresh as the
+    // last /sync.
+    private var stepsUntilNextChunk: Int? {
+        let chunk = 1000
+        let steps = healthKit.todaySteps
+        let target = healthKit.targetSteps
+        guard steps < target else { return nil }
+        let nextThreshold = min(((steps / chunk) + 1) * chunk, target)
+        let remaining = nextThreshold - steps
+        return remaining > 0 ? remaining : nil
+    }
+
     private var stepsCard: some View {
         let isCompleted = healthKit.areTodaysStepsCompleted
         let waived = network.waiveOffStatus?.stepsWaivedToday ?? false
@@ -186,6 +196,11 @@ struct ContentView: View {
                 Text("of \(healthKit.targetSteps) steps")
                     .font(.caption)
                     .foregroundStyle(Palette.textSecondary)
+                if let remaining = stepsUntilNextChunk, remaining > 0 {
+                    Text("\(remaining) to next +10m")
+                        .font(.caption2)
+                        .foregroundStyle(Palette.neutral)
+                }
             }
         } footer: {
             EmptyView()
@@ -217,6 +232,11 @@ struct ContentView: View {
                 Text("of \(gymTracker.targetGymDurationMinutes) min target")
                     .font(.caption)
                     .foregroundStyle(Palette.textSecondary)
+                if !isCompleted {
+                    Text("Full session: +45m")
+                        .font(.caption2)
+                        .foregroundStyle(Palette.neutral)
+                }
             }
         } footer: {
             gymActionButton
@@ -367,22 +387,25 @@ struct ContentView: View {
 
     private var difficultyBreakdown: some View {
         HStack(spacing: 0) {
-            difficultyColumn(label: "EASY", count: leetCode.easyTodayCount, color: Palette.open)
+            difficultyColumn(label: "EASY", count: leetCode.easyTodayCount, creditLabel: "+5m", color: Palette.open)
             Divider().overlay(Palette.surfaceStroke).frame(height: 20)
-            difficultyColumn(label: "MEDIUM", count: leetCode.mediumTodayCount, color: Palette.waived)
+            difficultyColumn(label: "MEDIUM", count: leetCode.mediumTodayCount, creditLabel: "+10m", color: Palette.waived)
             Divider().overlay(Palette.surfaceStroke).frame(height: 20)
-            difficultyColumn(label: "HARD", count: leetCode.hardTodayCount, color: Palette.locked)
+            difficultyColumn(label: "HARD", count: leetCode.hardTodayCount, creditLabel: "+15m", color: Palette.locked)
         }
     }
 
-    private func difficultyColumn(label: String, count: Int, color: Color) -> some View {
-        VStack(spacing: 4) {
+    private func difficultyColumn(label: String, count: Int, creditLabel: String, color: Color) -> some View {
+        VStack(spacing: 2) {
             Text(label)
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(color)
             Text("\(count)")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(Palette.textPrimary)
+            Text(creditLabel)
+                .font(.system(size: 9))
+                .foregroundStyle(Palette.textSecondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -412,9 +435,6 @@ struct ContentView: View {
         return String(format: "%02d:%02d", minutes, secs)
     }
 
-    /// Single source of truth for the error line surfaced on the gate hero.
-    /// Every network path — gate sync, waive-off fetch, LeetCode fetch —
-    /// funnels through here so there's one place, one message.
     private var networkErrorMessage: String? {
         if !lastSyncStatus.isEmpty {
             return lastSyncStatus
@@ -465,12 +485,6 @@ struct ContentView: View {
         lastSyncStatus = ""
 
         do {
-            // Re-derive hasCheckedOutToday / lastCheckIn / lastCheckOut against
-            // *today's* date on every refresh — not just at cold launch — so the
-            // gym card doesn't get stuck on yesterday's "Session complete" state
-            // if the app was only backgrounded across midnight.
-            // NOTE: requires `checkDailyCheckoutStatus()` in GymTracker to be
-            // non-private (currently `private func` — change to `func`).
             gymTracker.checkDailyCheckoutStatus()
 
             gymTracker.refreshLocation()
@@ -513,16 +527,6 @@ struct ContentView: View {
 
 // MARK: - Gate Hero (Device Status Card)
 
-/// The signature element: one big dial mirroring the physical gate the ESP32
-/// controls. Every goal card above closes its own ring; this is the sum of
-/// them — the same lock/open language, scaled up, front and center.
-///
-/// Revamp notes: the previous layout crammed the online/offline dot under
-/// the icon and the credit line into a single `HStack` with `lineLimit`/
-/// `minimumScaleFactor` fighting for space. This version gives each piece of
-/// information its own row: identity (icon + status label + online pill) on
-/// top, a divider, then the credit line on its own full-width row where the
-/// claim button never has to compete for space.
 private struct GateHero: View {
     let isOpen: Bool?
     let deviceOnline: Bool
@@ -581,17 +585,6 @@ private struct GateHero: View {
         .background(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(Palette.surface)
-                .overlay(
-                    // Faint directional glow tying the card's background to
-                    // the current state without needing extra text/icons.
-                    RadialGradient(
-                        colors: [tint.opacity(0.06), .clear],
-                        center: .topLeading,
-                        startRadius: 4,
-                        endRadius: 220
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -605,14 +598,7 @@ private struct GateHero: View {
         HStack(alignment: .center, spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [tint.opacity(0.35), tint.opacity(0.05)],
-                            center: .center,
-                            startRadius: 2,
-                            endRadius: 34
-                        )
-                    )
+                    .fill(tint.opacity(0.15))
                     .frame(width: 56, height: 56)
                 Image(systemName: icon)
                     .font(.system(size: 20, weight: .bold))
@@ -655,7 +641,7 @@ private struct GateHero: View {
         .overlay(Capsule().stroke(Palette.surfaceStroke, lineWidth: 1))
     }
 
-    // MARK: Credit row (its own full-width row, no more squeeze)
+    // MARK: Credit row
 
     private var creditIcon: String {
         if goalsFullyMet == true { return "checkmark.circle.fill" }
@@ -701,22 +687,35 @@ private struct GateHero: View {
         }
     }
 
+    // Outlined pill, same recipe as `onlinePill` above (translucent dark
+    // fill + a 1pt stroke) so it reads as part of this card's own visual
+    // language rather than a system button dropped in. Tinted green since
+    // claiming is the positive action — moves earned progress into
+    // spendable balance — as opposed to the waive-off ticket's amber, which
+    // signals "skipping today," a different kind of action entirely.
     private var claimButton: some View {
         Button {
             Task { await onClaim() }
         } label: {
-            if isClaiming {
-                ProgressView()
-                    .scaleEffect(0.7)
-                    .frame(width: 16, height: 16)
-            } else {
-                Text("Claim")
-                    .font(.system(size: 12, weight: .bold))
+            HStack(spacing: 5) {
+                if isClaiming {
+                    ProgressView()
+                        .scaleEffect(0.55)
+                        .frame(width: 12, height: 12)
+                } else {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("Claim")
+                        .font(.system(size: 12, weight: .bold))
+                }
             }
+            .foregroundStyle(Palette.open)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Capsule().fill(Palette.open.opacity(0.12)))
+            .overlay(Capsule().stroke(Palette.open.opacity(0.4), lineWidth: 1))
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
-        .tint(Palette.waived)
+        .buttonStyle(.plain)
         .disabled(isClaiming)
     }
 
@@ -756,10 +755,6 @@ private struct RingProgress: View {
 
 // MARK: - Goal Card Shell
 
-/// Shared frame for the three goal cards: an eyebrow header with a waive-off
-/// ticket and a status glyph, a ring + primary value row, and an optional
-/// footer for card-specific controls (the gym's check-in button, LeetCode's
-/// difficulty breakdown).
 private struct GoalCardShell<Content: View, Footer: View>: View {
     let title: String
     let icon: String
@@ -812,22 +807,32 @@ private struct GoalCardShell<Content: View, Footer: View>: View {
     }
 }
 
+// Same recipe as GateHero's `onlinePill` and `claimButton` — translucent
+// dark fill + a 1pt stroke in the semantic color, rather than a solid
+// filled chip. "calendar.badge.minus" reads as "skip today" more directly
+// than a ticket icon, whose usual connotation is redeeming for something
+// rather than opting out of it.
 private struct TicketBadge: View {
     let remaining: Int
     let action: () -> Void
+
+    private var tint: Color {
+        remaining > 0 ? Palette.waived : Palette.textSecondary
+    }
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: "ticket.fill")
+                    .font(.system(size: 10, weight: .bold))
                 Text("\(remaining)")
-                    .fontWeight(.bold)
+                    .font(.system(size: 11, weight: .bold))
             }
-            .font(.caption)
+            .foregroundStyle(tint)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Capsule().fill((remaining > 0 ? Palette.waived : Palette.neutral).opacity(0.15)))
-            .foregroundStyle(remaining > 0 ? Palette.waived : Palette.textSecondary)
+            .background(Capsule().fill(Palette.background.opacity(0.5)))
+            .overlay(Capsule().stroke(remaining > 0 ? tint.opacity(0.4) : Palette.surfaceStroke, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .disabled(remaining <= 0)
