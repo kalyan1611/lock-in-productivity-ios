@@ -67,6 +67,10 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
+                // Card-to-card spacing was tightened from 35 -> 20 to offset
+                // the taller GateHero card below, so the gap between the
+                // last card and the bottom of the screen stays the same as
+                // it was before the revamp.
                 VStack(spacing: 20) {
                     stepsCard
                     gymCard
@@ -507,11 +511,18 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Gate Hero
+// MARK: - Gate Hero (Device Status Card)
 
 /// The signature element: one big dial mirroring the physical gate the ESP32
-/// controls. Every goal card below closes its own ring; this is the sum of
+/// controls. Every goal card above closes its own ring; this is the sum of
 /// them — the same lock/open language, scaled up, front and center.
+///
+/// Revamp notes: the previous layout crammed the online/offline dot under
+/// the icon and the credit line into a single `HStack` with `lineLimit`/
+/// `minimumScaleFactor` fighting for space. This version gives each piece of
+/// information its own row: identity (icon + status label + online pill) on
+/// top, a divider, then the credit line on its own full-width row where the
+/// claim button never has to compete for space.
 private struct GateHero: View {
     let isOpen: Bool?
     let deviceOnline: Bool
@@ -555,14 +566,54 @@ private struct GateHero: View {
     }
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
+            identityRow
+
+            Divider().overlay(Palette.surfaceStroke)
+
+            creditRow
+
+            if let errorMessage {
+                errorRow(errorMessage)
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Palette.surface)
+                .overlay(
+                    // Faint directional glow tying the card's background to
+                    // the current state without needing extra text/icons.
+                    RadialGradient(
+                        colors: [tint.opacity(0.06), .clear],
+                        center: .topLeading,
+                        startRadius: 4,
+                        endRadius: 220
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Palette.surfaceStroke, lineWidth: 1)
+        )
+    }
+
+    // MARK: Identity row (icon + status label + online pill)
+
+    private var identityRow: some View {
+        HStack(alignment: .center, spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(tint.opacity(0.12))
-                    .frame(width: 50, height: 50)
-                Circle()
-                    .stroke(tint.opacity(0.35), lineWidth: 2)
-                    .frame(width: 50, height: 50)
+                    .fill(
+                        RadialGradient(
+                            colors: [tint.opacity(0.35), tint.opacity(0.05)],
+                            center: .center,
+                            startRadius: 2,
+                            endRadius: 34
+                        )
+                    )
+                    .frame(width: 56, height: 56)
                 Image(systemName: icon)
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(tint)
@@ -570,86 +621,116 @@ private struct GateHero: View {
             }
             .animation(.easeInOut(duration: 0.3), value: isOpen)
 
-            VStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("GATE STATUS")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(Palette.textSecondary)
                 Text(label)
                     .font(Typography.eyebrow)
-                    .tracking(2)
+                    .tracking(0.8)
                     .foregroundStyle(tint)
-
-                // Single row, always: device status on the left, credit info
-                // on the right. Folded into the same row so the card never
-                // grows — only its trailing content changes.
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(deviceOnline ? Palette.open : Palette.locked)
-                        .frame(width: 6, height: 6)
-                    Text(deviceOnline ? "Online" : "Offline")
-                        .font(.caption)
-                        .foregroundStyle(Palette.textSecondary)
-
-                    Text("·")
-                        .font(.caption)
-                        .foregroundStyle(Palette.textSecondary.opacity(0.5))
-
-                    creditTrailingContent
-                }
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.caption2)
-                    .foregroundStyle(Palette.waived)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
+            Spacer(minLength: 8)
+
+            onlinePill
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 26)
-        .background(Palette.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Palette.surfaceStroke, lineWidth: 1)
-        )
     }
 
-    @ViewBuilder
-    private var creditTrailingContent: some View {
-        if goalsFullyMet == true {
-            Label("Goals complete", systemImage: "checkmark.circle.fill")
-                .font(.caption)
-                .foregroundStyle(Palette.open)
-        } else if let available = availableToClaimMinutes, available > 0 {
-            HStack(spacing: 6) {
-                Text("+\(formatMinutes(available)) to claim")
-                    .font(.caption)
-                    .foregroundStyle(Palette.waived)
-
-                Button {
-                    Task { await onClaim() }
-                } label: {
-                    if isClaiming {
-                        ProgressView()
-                            .scaleEffect(0.6)
-                            .frame(width: 14, height: 14)
-                    } else {
-                        Text("Claim")
-                            .font(.caption.weight(.semibold))
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.mini)
-                .tint(Palette.waived)
-                .disabled(isClaiming)
-            }
-        } else if let remaining = remainingMinutes {
-            Text(remaining > 0 ? "\(formatMinutes(remaining)) left" : "Balance spent")
-                .font(.caption)
-                .foregroundStyle(remaining > 0 ? Palette.textSecondary : Palette.locked)
-        } else {
-            Text("Gate controller")
-                .font(.caption)
-                .foregroundStyle(Palette.textSecondary)
+    private var onlinePill: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(deviceOnline ? Palette.open : Palette.locked)
+                .frame(width: 6, height: 6)
+            Text(deviceOnline ? "ONLINE" : "OFFLINE")
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(1)
         }
+        .foregroundStyle(Palette.textSecondary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(Palette.background.opacity(0.6)))
+        .overlay(Capsule().stroke(Palette.surfaceStroke, lineWidth: 1))
+    }
+
+    // MARK: Credit row (its own full-width row, no more squeeze)
+
+    private var creditIcon: String {
+        if goalsFullyMet == true { return "checkmark.circle.fill" }
+        if let available = availableToClaimMinutes, available > 0 { return "bolt.fill" }
+        if let remaining = remainingMinutes, remaining > 0 { return "clock.fill" }
+        return "lock.fill"
+    }
+
+    private var creditText: String {
+        if goalsFullyMet == true { return "Goals complete — unlocked" }
+        if let available = availableToClaimMinutes, available > 0 { return "+\(formatMinutes(available)) to claim" }
+        if let remaining = remainingMinutes { return remaining > 0 ? "\(formatMinutes(remaining)) left" : "Balance spent" }
+        return "Gate controller"
+    }
+
+    private var creditTint: Color {
+        if goalsFullyMet == true { return Palette.open }
+        if let available = availableToClaimMinutes, available > 0 { return Palette.waived }
+        if let remaining = remainingMinutes { return remaining > 0 ? Palette.textSecondary : Palette.locked }
+        return Palette.textSecondary
+    }
+
+    private var showsClaimButton: Bool {
+        goalsFullyMet != true && (availableToClaimMinutes ?? 0) > 0
+    }
+
+    private var creditRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: creditIcon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(creditTint)
+                .frame(width: 18)
+
+            Text(creditText)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Palette.textPrimary)
+
+            Spacer(minLength: 8)
+
+            if showsClaimButton {
+                claimButton
+            }
+        }
+    }
+
+    private var claimButton: some View {
+        Button {
+            Task { await onClaim() }
+        } label: {
+            if isClaiming {
+                ProgressView()
+                    .scaleEffect(0.7)
+                    .frame(width: 16, height: 16)
+            } else {
+                Text("Claim")
+                    .font(.system(size: 12, weight: .bold))
+            }
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+        .tint(Palette.waived)
+        .disabled(isClaiming)
+    }
+
+    // MARK: Error row
+
+    private func errorRow(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2)
+            Text(message)
+                .font(.caption2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(Palette.waived)
     }
 }
 
