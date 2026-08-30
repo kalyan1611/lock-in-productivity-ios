@@ -71,7 +71,7 @@ struct ContentView: View {
                 // the taller GateHero card below, so the gap between the
                 // last card and the bottom of the screen stays the same as
                 // it was before the revamp.
-                VStack(spacing: 20) {
+                VStack(spacing: 24) {
                     stepsCard
                     gymCard
                     leetCodeCard
