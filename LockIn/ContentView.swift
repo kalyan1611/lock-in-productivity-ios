@@ -645,7 +645,7 @@ private struct GateHero: View {
 
     private var creditIcon: String {
         if goalsFullyMet == true { return "checkmark.circle.fill" }
-        if let available = availableToClaimMinutes, available > 0 { return "bolt.fill" }
+        if let available = availableToClaimMinutes, available > 0 { return "gift.fill" }
         if let remaining = remainingMinutes, remaining > 0 { return "clock.fill" }
         return "lock.fill"
     }
@@ -703,8 +703,6 @@ private struct GateHero: View {
                         .scaleEffect(0.55)
                         .frame(width: 12, height: 12)
                 } else {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 10, weight: .bold))
                     Text("Claim")
                         .font(.system(size: 12, weight: .bold))
                 }
