@@ -548,7 +548,7 @@ private struct GateHero: View {
     private var label: String {
         switch isOpen {
         case .some(true): goalsFullyMet == true ? "UNLOCKED FOR TODAY" : "OPEN — SPENDING BALANCE"
-        case .some(false): "RESTRICTED"
+        case .some(false): goalsFullyMet == true ? "LOCKOUT HOURS" : "RESTRICTED"
         case .none: "UNKNOWN"
         }
     }
