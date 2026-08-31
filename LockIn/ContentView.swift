@@ -23,23 +23,24 @@ private extension Color {
 }
 
 private enum Palette {
-    // MARK: Backgrounds
-    static let background    = Color(hex: 0x090B10)
-    static let surface       = Color(hex: 0x12151B)
-    static let surfaceRaised = Color(hex: 0x181C23)
-    static let surfaceStroke = Color(hex: 0x272D36)
 
-    // MARK: Text
-    static let textPrimary   = Color(hex: 0xF2F4F7)
-    static let textSecondary = Color(hex: 0x8D96A3)
-    static let textTertiary  = Color(hex: 0x5E6773)
+    // MARK: - Backgrounds
+    static let background      = Color(hex: 0x080A0C)
+    static let surface         = Color(hex: 0x111417)
+    static let surfaceRaised   = Color(hex: 0x171B1F)
+    static let surfaceStroke   = Color(hex: 0x24292E)
 
-    // MARK: Semantic
-    static let open           = Color(hex: 0x43E6A0)
-    static let started        = Color(hex: 0x5B9CFF)
-    static let locked         = Color(hex: 0xFF6262)
-    static let waived         = Color(hex: 0xFFB84D)
-    static let neutral        = Color(hex: 0x596370)
+    // MARK: - Text
+    static let textPrimary     = Color(hex: 0xF5F6F7)
+    static let textSecondary   = Color(hex: 0x8A9199)
+    static let textTertiary    = Color(hex: 0x555C64)
+
+    // MARK: - Semantic
+    static let open             = Color(hex: 0x55E6A5) // Goal met / unlocked
+    static let started          = Color(hex: 0x4F8FEF) // In progress
+    static let locked           = Color(hex: 0xFF5C5C) // Restricted
+    static let waived           = Color(hex: 0xE7A94B) // Waive-off used
+    static let neutral          = Color(hex: 0x4B525A) // Not started / inactive
 }
 
 private enum Typography {
@@ -90,7 +91,7 @@ struct ContentView: View {
                         onClaim: { await claimCredit() }
                     )
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 10)
                 .padding(.bottom, 24)
             }
             .background(Palette.background.ignoresSafeArea())
