@@ -1,6 +1,20 @@
 import SwiftUI
 
-// MARK: - Design Tokens
+// MARK: - Time Utilities
+
+enum TimeUtils {
+    static func isFreeTime(for date: Date = Date(), calendar: Calendar = .current) -> Bool {
+        let weekday = calendar.component(.weekday, from: date)
+        let isWeekend = (weekday == 1 || weekday == 7) // 1 = Sunday, 7 = Saturday
+
+        if isWeekend {
+            return true
+        }
+
+        let currentHour = calendar.component(.hour, from: date)
+        return currentHour >= 8 && currentHour < 23
+    }
+}
 
 //
 // LockIn's whole premise is a physical gate that only opens when the day's
@@ -557,7 +571,7 @@ private struct GateHero: View {
     private var label: String {
         switch isOpen {
         case .some(true): goalsFullyMet == true ? "UNLOCKED FOR TODAY" : "OPEN — SPENDING BALANCE"
-        case .some(false): goalsFullyMet == true ? "LOCKOUT HOURS" : "RESTRICTED"
+        case .some(false): TimeUtils.isFreeTime() ? "RESTRICTED" : "LOCKOUT HOURS"
         case .none: "UNKNOWN"
         }
     }
@@ -586,9 +600,10 @@ private struct GateHero: View {
         VStack(alignment: .leading, spacing: 16) {
             identityRow
 
-            Divider().overlay(Palette.surfaceStroke)
-
-            creditRow
+            if TimeUtils.isFreeTime() {
+                Divider().overlay(Palette.surfaceStroke)
+                creditRow
+            }
 
             if let errorMessage {
                 errorRow(errorMessage)
@@ -847,7 +862,7 @@ private struct GoalCardShell<Content: View, Footer: View>: View {
 
             Spacer()
 
-            if !isCompleted, !waived, let waiveRemaining {
+            if !isCompleted, !waived, TimeUtils.isFreeTime(), let waiveRemaining {
                 TicketBadge(remaining: waiveRemaining, action: onTapWaiveOff)
             }
         }
