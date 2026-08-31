@@ -23,24 +23,26 @@ private extension Color {
 }
 
 private enum Palette {
-
     // MARK: - Backgrounds
-    static let background      = Color(hex: 0x080A0C)
-    static let surface         = Color(hex: 0x111417)
-    static let surfaceRaised   = Color(hex: 0x171B1F)
-    static let surfaceStroke   = Color(hex: 0x24292E)
+
+    static let background = Color(hex: 0x080A0C)
+    static let surface = Color(hex: 0x111417)
+    static let surfaceRaised = Color(hex: 0x171B1F)
+    static let surfaceStroke = Color(hex: 0x24292E)
 
     // MARK: - Text
-    static let textPrimary     = Color(hex: 0xF5F6F7)
-    static let textSecondary   = Color(hex: 0x8A9199)
-    static let textTertiary    = Color(hex: 0x555C64)
+
+    static let textPrimary = Color(hex: 0xF5F6F7)
+    static let textSecondary = Color(hex: 0x8A9199)
+    static let textTertiary = Color(hex: 0x555C64)
 
     // MARK: - Semantic
-    static let open             = Color(hex: 0x55E6A5) // Goal met / unlocked
-    static let started          = Color(hex: 0x4F8FEF) // In progress
-    static let locked           = Color(hex: 0xFF5C5C) // Restricted
-    static let waived           = Color(hex: 0xE7A94B) // Waive-off used
-    static let neutral          = Color(hex: 0x4B525A) // Not started / inactive
+
+    static let open = Color(hex: 0x55E6A5) // Goal met / unlocked
+    static let started = Color(hex: 0x4F8FEF) // In progress
+    static let locked = Color(hex: 0xFF5C5C) // Restricted
+    static let waived = Color(hex: 0xE7A94B) // Waive-off used
+    static let neutral = Color(hex: 0x4B525A) // Not started / inactive
 }
 
 private enum Typography {
@@ -164,12 +166,12 @@ struct ContentView: View {
 
     // MARK: - Steps Card
 
-    // Mirrors the firmware's STEPS_PER_CREDIT_CHUNK (1000 steps = +10m,
-    // capped at the daily target) — kept in sync manually with
-    // dns_filter.ino's tieredMinutesFromProgress(). Computed locally from
-    // HealthKit data the app already has, rather than round-tripping
-    // through the ESP32, so it's live rather than only as fresh as the
-    // last /sync.
+    /// Mirrors the firmware's STEPS_PER_CREDIT_CHUNK (1000 steps = +10m,
+    /// capped at the daily target) — kept in sync manually with
+    /// dns_filter.ino's tieredMinutesFromProgress(). Computed locally from
+    /// HealthKit data the app already has, rather than round-tripping
+    /// through the ESP32, so it's live rather than only as fresh as the
+    /// last /sync.
     private var stepsUntilNextChunk: Int? {
         let chunk = 1000
         let steps = healthKit.todaySteps
@@ -489,7 +491,6 @@ struct ContentView: View {
     // MARK: - Sync
 
     private func refresh() async {
-
         lastSyncStatus = ""
 
         do {
@@ -572,8 +573,12 @@ private struct GateHero: View {
     private func formatMinutes(_ minutes: Int) -> String {
         let h = minutes / 60
         let m = minutes % 60
-        if h > 0 && m > 0 { return "\(h)h \(m)m" }
-        if h > 0 { return "\(h)h" }
+        if h > 0, m > 0 {
+            return "\(h)h \(m)m"
+        }
+        if h > 0 {
+            return "\(h)h"
+        }
         return "\(m)m"
     }
 
@@ -649,26 +654,37 @@ private struct GateHero: View {
         .overlay(Capsule().stroke(Palette.surfaceStroke, lineWidth: 1))
     }
 
-    // MARK: Credit row
+    // MARK: - Credit row
 
     private var creditIcon: String {
-        if goalsFullyMet == true { return "checkmark.circle.fill" }
-        if let available = availableToClaimMinutes, available > 0 { return "gift.fill" }
-        if let remaining = remainingMinutes, remaining > 0 { return "clock.fill" }
+        if goalsFullyMet == true {
+            return "checkmark.circle.fill"
+        }
+
+        if (availableToClaimMinutes ?? 0) > 0 {
+            return "gift.fill"
+        }
+
+        if (remainingMinutes ?? 0) > 0 {
+            return "clock.fill"
+        }
+
         return "lock.fill"
     }
 
-    private var creditText: String {
-        if goalsFullyMet == true { return "Goals complete — unlocked" }
-        if let available = availableToClaimMinutes, available > 0 { return "+\(formatMinutes(available)) to claim" }
-        if let remaining = remainingMinutes { return remaining > 0 ? "\(formatMinutes(remaining)) left" : "Balance spent" }
-        return "Gate controller"
-    }
-
     private var creditTint: Color {
-        if goalsFullyMet == true { return Palette.open }
-        if let available = availableToClaimMinutes, available > 0 { return Palette.waived }
-        if let remaining = remainingMinutes { return remaining > 0 ? Palette.textSecondary : Palette.locked }
+        if goalsFullyMet == true {
+            return Palette.open
+        }
+
+        if (availableToClaimMinutes ?? 0) > 0 {
+            return Palette.open
+        }
+
+        if let remaining = remainingMinutes {
+            return remaining > 0 ? Palette.textSecondary : Palette.locked
+        }
+
         return Palette.textSecondary
     }
 
@@ -677,15 +693,40 @@ private struct GateHero: View {
     }
 
     private var creditRow: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: creditIcon)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(creditTint)
                 .frame(width: 18)
 
-            Text(creditText)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Palette.textPrimary)
+            VStack(alignment: .leading, spacing: 3) {
+                if goalsFullyMet == true {
+                    Text("Goals complete — unlocked")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Palette.textPrimary)
+                } else {
+                    // Credit that has been earned but not yet claimed.
+                    if let available = availableToClaimMinutes, available > 0 {
+                        HStack(spacing: 5) {
+                            Text(isClaiming
+                                ? "Claiming \(formatMinutes(available))…"
+                                : "+\(formatMinutes(available)) available")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Palette.textPrimary)
+                        }
+                    }
+                    // Credit already claimed and currently available to spend.
+                    if let remaining = remainingMinutes, remaining > 0 {
+                        Text("\(formatMinutes(remaining)) balance left")
+                            .font(.caption2)
+                            .foregroundStyle(Palette.textSecondary)
+                    } else if availableToClaimMinutes == nil || availableToClaimMinutes == 0 {
+                        Text("No credit available")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Palette.textPrimary)
+                    }
+                }
+            }
 
             Spacer(minLength: 8)
 
@@ -695,12 +736,6 @@ private struct GateHero: View {
         }
     }
 
-    // Outlined pill, same recipe as `onlinePill` above (translucent dark
-    // fill + a 1pt stroke) so it reads as part of this card's own visual
-    // language rather than a system button dropped in. Tinted green since
-    // claiming is the positive action — moves earned progress into
-    // spendable balance — as opposed to the waive-off ticket's amber, which
-    // signals "skipping today," a different kind of action entirely.
     private var claimButton: some View {
         Button {
             Task { await onClaim() }
@@ -718,8 +753,14 @@ private struct GateHero: View {
             .foregroundStyle(Palette.open)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(Capsule().fill(Palette.open.opacity(0.12)))
-            .overlay(Capsule().stroke(Palette.open.opacity(0.4), lineWidth: 1))
+            .background(
+                Capsule()
+                    .fill(Palette.open.opacity(0.12))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(Palette.open.opacity(0.4), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
         .disabled(isClaiming)
@@ -813,11 +854,11 @@ private struct GoalCardShell<Content: View, Footer: View>: View {
     }
 }
 
-// Same recipe as GateHero's `onlinePill` and `claimButton` — translucent
-// dark fill + a 1pt stroke in the semantic color, rather than a solid
-// filled chip. "calendar.badge.minus" reads as "skip today" more directly
-// than a ticket icon, whose usual connotation is redeeming for something
-// rather than opting out of it.
+/// Same recipe as GateHero's `onlinePill` and `claimButton` — translucent
+/// dark fill + a 1pt stroke in the semantic color, rather than a solid
+/// filled chip. "calendar.badge.minus" reads as "skip today" more directly
+/// than a ticket icon, whose usual connotation is redeeming for something
+/// rather than opting out of it.
 private struct TicketBadge: View {
     let remaining: Int
     let action: () -> Void
