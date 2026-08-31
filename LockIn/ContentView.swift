@@ -25,8 +25,8 @@ private extension Color {
 private enum Palette {
     // MARK: - Backgrounds
 
-    static let background = Color(hex: 0x080A0C)
-    static let surface = Color(hex: 0x111417)
+    static let background = Color(hex: 0x000000)
+    static let surface = Color(hex: 0x111111)
     static let surfaceRaised = Color(hex: 0x171B1F)
     static let surfaceStroke = Color(hex: 0x24292E)
 
@@ -77,7 +77,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: 20) {
                     stepsCard
                     gymCard
                     leetCodeCard
@@ -556,7 +556,7 @@ private struct GateHero: View {
 
     private var label: String {
         switch isOpen {
-        case .some(true): goalsFullyMet == true ? "UNLOCKED FOR TODAY" : "OPEN — SPENDING CREDIT"
+        case .some(true): goalsFullyMet == true ? "UNLOCKED FOR TODAY" : "OPEN — SPENDING BALANCE"
         case .some(false): goalsFullyMet == true ? "LOCKOUT HOURS" : "RESTRICTED"
         case .none: "UNKNOWN"
         }
@@ -718,12 +718,12 @@ private struct GateHero: View {
                     // Credit already claimed and currently available to spend.
                     if let remaining = remainingMinutes, remaining > 0 {
                         Text("\(formatMinutes(remaining)) balance left")
-                            .font(.caption2)
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Palette.textSecondary)
                     } else if availableToClaimMinutes == nil || availableToClaimMinutes == 0 {
                         Text("No credit available")
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Palette.textPrimary)
+                            .foregroundStyle(Palette.textSecondary)
                     }
                 }
             }
