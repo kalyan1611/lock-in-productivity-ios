@@ -23,16 +23,23 @@ private extension Color {
 }
 
 private enum Palette {
-    static let background = Color(hex: 0x0A0B0D)
-    static let surface = Color(hex: 0x15171A)
-    static let surfaceStroke = Color(hex: 0x24272B)
-    static let textPrimary = Color(hex: 0xEDEEF0)
-    static let textSecondary = Color(hex: 0x9A9EA6)
-    static let open = Color(hex: 0x3DDC84)
-    static let started = Color(hex: 0x4A9EFF)
-    static let locked = Color(hex: 0xFF5A5A)
-    static let waived = Color(hex: 0xFFB648)
-    static let neutral = Color(hex: 0x4C5561)
+    // MARK: Backgrounds
+    static let background    = Color(hex: 0x090B10)
+    static let surface       = Color(hex: 0x12151B)
+    static let surfaceRaised = Color(hex: 0x181C23)
+    static let surfaceStroke = Color(hex: 0x272D36)
+
+    // MARK: Text
+    static let textPrimary   = Color(hex: 0xF2F4F7)
+    static let textSecondary = Color(hex: 0x8D96A3)
+    static let textTertiary  = Color(hex: 0x5E6773)
+
+    // MARK: Semantic
+    static let open           = Color(hex: 0x43E6A0)
+    static let started        = Color(hex: 0x5B9CFF)
+    static let locked         = Color(hex: 0xFF6262)
+    static let waived         = Color(hex: 0xFFB84D)
+    static let neutral        = Color(hex: 0x596370)
 }
 
 private enum Typography {
