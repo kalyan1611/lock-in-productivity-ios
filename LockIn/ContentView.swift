@@ -77,7 +77,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 14) {
                     stepsCard
                     gymCard
                     leetCodeCard
