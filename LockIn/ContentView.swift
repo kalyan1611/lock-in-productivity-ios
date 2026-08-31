@@ -669,7 +669,7 @@ private struct GateHero: View {
             return "clock.fill"
         }
 
-        return "lock.fill"
+        return "gift"
     }
 
     private var creditTint: Color {
