@@ -66,7 +66,7 @@ struct GymCard: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(readyToCheckOut ? Palette.background : Palette.textSecondary)
-                    .background(Capsule().fill(readyToCheckOut ? Palette.locked : Palette.surfaceStroke))
+                    .background(Capsule().fill(readyToCheckOut ? Palette.open : Palette.surfaceStroke))
                     .disabled(!readyToCheckOut)
 
                     gymGuidanceLabel
