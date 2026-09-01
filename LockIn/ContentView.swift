@@ -40,7 +40,7 @@ private enum Palette {
     // MARK: - Backgrounds
 
     static let background = Color(hex: 0x000000)
-    static let surface = Color(hex: 0x111111)
+    static let surface = Color(hex: 0x050505)
     static let surfaceRaised = Color(hex: 0x171B1F)
     static let surfaceStroke = Color(hex: 0x24292E)
 
@@ -90,7 +90,9 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+
                 VStack(spacing: 14) {
                     stepsCard
                     gymCard
@@ -108,10 +110,10 @@ struct ContentView: View {
                     )
                 }
                 .padding(.horizontal, 10)
-                .padding(.bottom, 24)
+
+                Spacer(minLength: 0)
             }
             .background(Palette.background.ignoresSafeArea())
-            .scrollIndicators(.hidden)
             .navigationTitle("LockIn")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(Palette.background, for: .navigationBar)
@@ -136,13 +138,19 @@ struct ContentView: View {
                 gymTracker.requestLocationPermissionIfNeeded()
             }
             .alert("Use a waive-off?", isPresented: waiveOffPromptBinding) {
-                Button("Cancel", role: .cancel) { waiveOffAlertType = nil }
-                Button("Use waive-off") { confirmWaiveOff() }
+                Button("Cancel", role: .cancel) {
+                    waiveOffAlertType = nil
+                }
+                Button("Use waive-off") {
+                    confirmWaiveOff()
+                }
             } message: {
                 Text(waiveOffAlertMessage(for: waiveOffAlertType))
             }
             .alert("Couldn't use waive-off", isPresented: waiveOffErrorBinding) {
-                Button("OK", role: .cancel) { waiveOffError = nil }
+                Button("OK", role: .cancel) {
+                    waiveOffError = nil
+                }
             } message: {
                 Text(waiveOffError ?? "")
             }
@@ -899,4 +907,8 @@ private struct TicketBadge: View {
         .buttonStyle(.plain)
         .disabled(remaining <= 0)
     }
+}
+
+#Preview("iPhone") {
+    ContentView()
 }
