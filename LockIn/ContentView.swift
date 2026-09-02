@@ -17,9 +17,7 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-
+            ScrollView {
                 VStack(spacing: 14) {
                     StepsCard(
                         healthKit: healthKit,
@@ -52,16 +50,10 @@ struct ContentView: View {
                     )
                 }
                 .padding(.horizontal, 10)
-
-                Spacer(minLength: 0)
+                .padding(.top, 12)
+                .padding(.bottom, 32)
             }
-            .background(Palette.background.ignoresSafeArea())
-            .navigationTitle("LockIn")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Palette.background, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .task { await refresh() }
+            .scrollIndicators(.hidden)
             .refreshable {
                 await withCheckedContinuation { continuation in
                     Task {
@@ -70,6 +62,13 @@ struct ContentView: View {
                     }
                 }
             }
+            .background(Palette.background.ignoresSafeArea())
+            .navigationTitle("LockIn")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Palette.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .task { await refresh() }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     Task { await refresh() }
