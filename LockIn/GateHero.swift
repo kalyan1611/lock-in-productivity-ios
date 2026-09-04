@@ -1,8 +1,10 @@
+
 import SwiftUI
 
 // MARK: - Gate Hero (Device Status Card)
 
 struct GateHero: View {
+
     let isOpen: Bool?
     let deviceOnline: Bool
     let errorMessage: String?
@@ -14,19 +16,27 @@ struct GateHero: View {
 
     private let lowBalanceThresholdMinutes = 10
 
-    /// True only while genuinely open and running down a claimed balance
-    /// that's getting close to zero — the state the amber warning exists
-    /// to catch before it becomes a hard cutoff.
+    // MARK: - State
+
     private var isLowBalance: Bool {
-        guard isOpen == true, goalsFullyMet != true, let remaining = remainingMinutes else { return false }
+        guard isOpen == true,
+              goalsFullyMet != true,
+              let remaining = remainingMinutes
+        else {
+            return false
+        }
+
         return remaining > 0 && remaining <= lowBalanceThresholdMinutes
     }
 
     private var tint: Color {
         switch isOpen {
-        case .some(true): isLowBalance ? Palette.waived : Palette.open
-        case .some(false): Palette.locked
-        case .none: Palette.neutral
+        case .some(true):
+            return isLowBalance ? Palette.waived : Palette.open
+        case .some(false):
+            return Palette.locked
+        case .none:
+            return Palette.neutral
         }
     }
 
@@ -36,18 +46,22 @@ struct GateHero: View {
             if goalsFullyMet == true {
                 return "UNLOCKED FOR TODAY"
             }
+
             if let remaining = remainingMinutes {
                 return "OPEN — \(formatMinutes(remaining)) LEFT"
             }
+
             return "OPEN — SPENDING BALANCE"
 
         case .some(false):
             if !TimeUtils.isFreeTime() {
                 return TimeUtils.lockoutLabel()
             }
+
             if let available = availableToClaimMinutes, available > 0 {
                 return "TAP CLAIM TO UNLOCK"
             }
+
             return "LOCKED — GOALS NOT MET"
 
         case .none:
@@ -57,19 +71,27 @@ struct GateHero: View {
 
     private var icon: String {
         switch isOpen {
-        case .some(true): "lock.open.fill"
-        case .some(false): "lock.fill"
-        case .none: "questionmark"
+        case .some(true):
+            return "lock.open.fill"
+        case .some(false):
+            return "lock.fill"
+        case .none:
+            return "questionmark"
         }
     }
 
+    // MARK: - Body
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+
             identityRow
 
             if TimeUtils.isFreeTime() {
-                Divider().overlay(Palette.surfaceStroke)
-                creditRow
+                Divider()
+                    .overlay(Palette.surfaceStroke)
+
+                creditSection
             }
 
             if let errorMessage {
@@ -87,14 +109,16 @@ struct GateHero: View {
         )
     }
 
-    // MARK: Identity row (icon + status label + online pill)
+    // MARK: - Identity Row
 
     private var identityRow: some View {
         HStack(alignment: .center, spacing: 14) {
+
             ZStack {
                 Circle()
                     .fill(tint.opacity(0.15))
                     .frame(width: 56, height: 56)
+
                 Image(systemName: icon)
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(tint)
@@ -104,9 +128,16 @@ struct GateHero: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("GATE STATUS")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .font(
+                        .system(
+                            size: 9,
+                            weight: .bold,
+                            design: .monospaced
+                        )
+                    )
                     .tracking(1.2)
                     .foregroundStyle(Palette.textSecondary)
+
                 Text(label)
                     .font(Typography.eyebrow)
                     .tracking(0.8)
@@ -120,25 +151,93 @@ struct GateHero: View {
         }
     }
 
+    // MARK: - Online Pill
+
     private var onlinePill: some View {
         HStack(spacing: 5) {
             Circle()
-                .fill(deviceOnline ? Palette.open : Palette.locked)
+                .fill(
+                    deviceOnline
+                        ? Palette.open
+                        : Palette.locked
+                )
                 .frame(width: 6, height: 6)
+
             Text(deviceOnline ? "ONLINE" : "OFFLINE")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .font(
+                    .system(
+                        size: 9,
+                        weight: .bold,
+                        design: .monospaced
+                    )
+                )
                 .tracking(1)
         }
         .foregroundStyle(Palette.textSecondary)
         .padding(.horizontal, 9)
         .padding(.vertical, 5)
-        .background(Capsule().fill(Palette.background.opacity(0.6)))
-        .overlay(Capsule().stroke(Palette.surfaceStroke, lineWidth: 1))
+        .background(
+            Capsule()
+                .fill(Palette.background.opacity(0.6))
+        )
+        .overlay(
+            Capsule()
+                .stroke(Palette.surfaceStroke, lineWidth: 1)
+        )
     }
 
-    // MARK: - Credit row
+    // MARK: - Compact Credit Section
 
-    private var creditIcon: String {
+    private var creditSection: some View {
+        HStack(spacing: 0) {
+
+            // Available credit
+            HStack(spacing: 7) {
+                Image(systemName: availableCreditIcon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(availableCreditTint)
+
+                Text(availableCreditText)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(availableCreditTextTint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+
+            Spacer(minLength: 10)
+
+            // Divider
+            Rectangle()
+                .fill(Palette.surfaceStroke)
+                .frame(width: 1, height: 22)
+
+            Spacer(minLength: 10)
+
+            // Current balance
+            HStack(spacing: 7) {
+                Image(systemName: balanceIcon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(balanceTint)
+
+                Text(balanceText)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(balanceTint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+
+            // Claim button
+            if showsClaimButton {
+                Spacer(minLength: 10)
+                claimButton
+            }
+        }
+        .frame(minHeight: 32)
+    }
+
+    // MARK: - Available Credit
+
+    private var availableCreditIcon: String {
         if goalsFullyMet == true {
             return "checkmark.circle.fill"
         }
@@ -147,14 +246,10 @@ struct GateHero: View {
             return "gift.fill"
         }
 
-        if (remainingMinutes ?? 0) > 0 {
-            return "clock.fill"
-        }
-
         return "gift"
     }
 
-    private var creditTint: Color {
+    private var availableCreditTint: Color {
         if goalsFullyMet == true {
             return Palette.open
         }
@@ -163,70 +258,84 @@ struct GateHero: View {
             return Palette.open
         }
 
-        if let remaining = remainingMinutes {
-            if remaining <= 0 {
-                return Palette.locked
-            }
-            if remaining <= lowBalanceThresholdMinutes {
-                return Palette.waived
-            }
+        return Palette.textSecondary
+    }
+
+    private var availableCreditText: String {
+        if goalsFullyMet == true {
+            return "Goals complete"
+        }
+
+        if let available = availableToClaimMinutes,
+           available > 0 {
+            return "+\(formatMinutes(available)) available"
+        }
+
+        return "No credit"
+    }
+
+    // MARK: - Balance
+
+    private var balanceIcon: String {
+        if let remaining = remainingMinutes,
+           remaining > 0 {
+            return "clock.fill"
+        }
+
+        return "clock"
+    }
+
+    private var balanceTint: Color {
+        guard let remaining = remainingMinutes,
+              remaining > 0
+        else {
             return Palette.textSecondary
+        }
+
+        if remaining <= lowBalanceThresholdMinutes {
+            return Palette.waived
+        }
+
+        return Palette.textPrimary
+    }
+    
+    private var availableCreditTextTint: Color {
+        if goalsFullyMet == true {
+            return Palette.open
+        }
+
+        if (availableToClaimMinutes ?? 0) > 0 {
+            return Palette.textPrimary
         }
 
         return Palette.textSecondary
     }
 
-    private var showsClaimButton: Bool {
-        goalsFullyMet != true && (availableToClaimMinutes ?? 0) > 0
+    private var balanceText: String {
+        if goalsFullyMet == true {
+            return "Unlocked"
+        }
+
+        if let remaining = remainingMinutes,
+           remaining > 0 {
+            return "\(formatMinutes(remaining)) balance"
+        }
+
+        return "No balance"
     }
 
-    private var creditRow: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: creditIcon)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(creditTint)
-                .frame(width: 18)
+    // MARK: - Claim Button
 
-            VStack(alignment: .leading, spacing: 3) {
-                if goalsFullyMet == true {
-                    Text("Goals complete — unlocked")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Palette.textPrimary)
-                } else {
-                    // Credit that has been earned but not yet claimed.
-                    if let available = availableToClaimMinutes, available > 0 {
-                        HStack(spacing: 5) {
-                            Text(isClaiming
-                                ? "Claiming \(formatMinutes(available))…"
-                                : "+\(formatMinutes(available)) available")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Palette.textPrimary)
-                        }
-                    }
-                    // Credit already claimed and currently available to spend.
-                    if let remaining = remainingMinutes, remaining > 0 {
-                        Text("\(formatMinutes(remaining)) balance left")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Palette.textSecondary)
-                    } else if availableToClaimMinutes == nil || availableToClaimMinutes == 0 {
-                        Text("No credit available")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Palette.textSecondary)
-                    }
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            if showsClaimButton {
-                claimButton
-            }
-        }
+    private var showsClaimButton: Bool {
+        goalsFullyMet != true &&
+        (availableToClaimMinutes ?? 0) > 0
     }
 
     private var claimButton: some View {
         Button {
-            Task { await onClaim() }
+            Task {
+                await onClaim()
+            }
         } label: {
             HStack(spacing: 5) {
                 if isClaiming {
@@ -235,35 +344,43 @@ struct GateHero: View {
                         .frame(width: 12, height: 12)
                 } else {
                     Text("Claim")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                 }
             }
             .foregroundStyle(Palette.open)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 5)
             .background(
                 Capsule()
                     .fill(Palette.open.opacity(0.12))
             )
             .overlay(
                 Capsule()
-                    .stroke(Palette.open.opacity(0.4), lineWidth: 1)
+                    .stroke(
+                        Palette.open.opacity(0.4),
+                        lineWidth: 1
+                    )
             )
         }
         .buttonStyle(.plain)
         .disabled(isClaiming)
     }
 
-    // MARK: Error row
+    // MARK: Error Row
 
     private func errorRow(_ message: String) -> some View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.caption2)
+
             Text(message)
                 .font(.caption2)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(Palette.waived)
     }
+}
+
+#Preview("iPhone") {
+    ContentView()
 }

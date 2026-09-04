@@ -18,7 +18,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 14) {
+                VStack(spacing: 12) {
                     StepsCard(
                         healthKit: healthKit,
                         waived: network.waiveOffStatus?.stepsWaivedToday ?? false,
@@ -50,8 +50,8 @@ struct ContentView: View {
                     )
                 }
                 .padding(.horizontal, 10)
-                .padding(.top, 12)
-                .padding(.bottom, 32)
+                .padding(.top, 0)
+                .padding(.bottom, 0)
             }
             .scrollIndicators(.hidden)
             .refreshable {
