@@ -48,7 +48,7 @@ struct GateHero: View {
             }
 
             if let remaining = remainingMinutes {
-                return "OPEN — \(formatMinutes(remaining)) LEFT"
+                return "\(formatMinutes(remaining)) LEFT"
             }
 
             return "OPEN — SPENDING BALANCE"
@@ -62,7 +62,7 @@ struct GateHero: View {
                 return "TAP CLAIM TO UNLOCK"
             }
 
-            return "LOCKED — GOALS NOT MET"
+            return "GOALS NOT MET"
 
         case .none:
             return "SYNCING…"
