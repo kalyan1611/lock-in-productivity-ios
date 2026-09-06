@@ -2,11 +2,12 @@ import SwiftUI
 
 // MARK: - Activity Bar Chart
 
-/// Generic week/month bar chart used by Steps, Gym, and LeetCode. Each bar
-/// always shows its total value above it. Tapping a bar selects it (dims
-/// the others); if that bar has more than one segment (LeetCode's
-/// easy/medium/hard split), the top label switches from the total to the
-/// per-segment composition, color-coded to match the segments.
+/// Generic week/month bar chart used by Steps, Gym, and LeetCode.
+/// Week view (7 bars, room to spare) always shows each bar's total above
+/// it. Month view (~30 bars, tight) shows nothing on top by default and
+/// only reveals a label — total, or the easy/medium/hard breakdown for
+/// LeetCode — for whichever bar is tapped, so only one label ever needs
+/// to fit at a time.
 struct ActivityBarChart: View {
     struct Segment {
         let value: Double
@@ -17,7 +18,9 @@ struct ActivityBarChart: View {
         let date: Date
         let segments: [Segment]
 
-        var total: Double { segments.reduce(0) { $0 + $1.value } }
+        var total: Double {
+            segments.reduce(0) { $0 + $1.value }
+        }
     }
 
     let entries: [Entry]
@@ -43,24 +46,37 @@ struct ActivityBarChart: View {
         period != .month || index % 5 == 0
     }
 
-    private var cornerRadius: CGFloat { period == .month ? 2 : 4 }
+    private var cornerRadius: CGFloat {
+        period == .month ? 2 : 4
+    }
+
+    private var topLabelFontSize: CGFloat {
+        period == .month ? 8 : 9
+    }
 
     var body: some View {
         GeometryReader { geo in
             let barSpacing: CGFloat = period == .month ? 2 : 8
             let barWidth = (geo.size.width - barSpacing * CGFloat(max(entries.count - 1, 0))) / CGFloat(max(entries.count, 1))
-            let topLabelHeight: CGFloat = period == .month ? 20 : 14
             let axisLabelHeight: CGFloat = 12
-            let barAreaHeight = max(geo.size.height - topLabelHeight - axisLabelHeight, 0)
+            let reservedTopHeight: CGFloat = period == .month ? 22 : 16
+            let barAreaHeight = max(geo.size.height - axisLabelHeight - reservedTopHeight, 20)
 
             HStack(alignment: .bottom, spacing: barSpacing) {
                 ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
                     let isSelected = selectedIndex == index
-                    let showBreakdown = isSelected && entry.segments.count > 1
+                    // Week: always show a label. Month: only for the tapped bar.
+                    let showLabel = period != .month || isSelected
+                    let showBreakdown = showLabel && isSelected && entry.segments.count > 1
 
                     VStack(spacing: 3) {
-                        topLabel(for: entry, showBreakdown: showBreakdown)
-                            .frame(height: topLabelHeight)
+                        // Spacer(minLength: 0) makes this column "greedy" so
+                        // the HStack fills the full height GeometryReader
+                        // gives it and bottom-aligns everything, instead of
+                        // shrinking to minimal size and pinning to the top.
+                        Spacer(minLength: 0)
+
+                        topLabel(for: entry, show: showLabel, showBreakdown: showBreakdown)
 
                         stackedBar(entry: entry, isSelected: isSelected, maxHeight: barAreaHeight)
 
@@ -81,48 +97,64 @@ struct ActivityBarChart: View {
     // MARK: - Top label (total, or per-segment breakdown when selected)
 
     @ViewBuilder
-    private func topLabel(for entry: Entry, showBreakdown: Bool) -> some View {
-        if showBreakdown {
-            HStack(spacing: 4) {
+    private func topLabel(for entry: Entry, show: Bool, showBreakdown: Bool) -> some View {
+        if !show || entry.total <= 0 {
+            Color.clear.frame(height: topLabelFontSize + 2)
+        } else if showBreakdown {
+            HStack(spacing: 3) {
                 ForEach(Array(entry.segments.enumerated()), id: \.offset) { _, segment in
                     if segment.value > 0 {
                         Text(valueLabel(segment.value))
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .font(.system(size: topLabelFontSize, weight: .bold, design: .monospaced))
                             .foregroundStyle(segment.color)
                     }
                 }
             }
-        } else if entry.total > 0 {
-            Text(valueLabel(entry.total))
-                .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                .foregroundStyle(Palette.textSecondary)
+            // fixedSize lets the label render at its true width instead of
+            // being squeezed into barWidth and truncated to "...".
+            .fixedSize()
+            .lineLimit(1)
         } else {
-            Color.clear
+            Text(valueLabel(entry.total))
+                .font(.system(size: topLabelFontSize, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Palette.textSecondary)
+                .fixedSize()
+                .lineLimit(1)
         }
     }
 
-    // MARK: - Bar (single color, or stacked segments)
+    // MARK: - Bar (single color, stacked segments, or empty-day placeholder)
 
     @ViewBuilder
     private func stackedBar(entry: Entry, isSelected: Bool, maxHeight: CGFloat) -> some View {
         let met = entry.total >= target
         let isStacked = entry.segments.count > 1
 
-        VStack(spacing: isStacked ? 1 : 0) {
-            // Reversed so the first segment (e.g. easy) ends up at the bottom of the bar.
-            ForEach(Array(entry.segments.enumerated().reversed()), id: \.offset) { _, segment in
-                let heightFraction = segment.value / maxValue
-                Rectangle()
-                    .fill(isStacked ? segment.color : (met ? Palette.open : Palette.started))
-                    .frame(height: segment.value > 0 ? max(3, maxHeight * heightFraction) : 0)
+        Group {
+            if entry.total <= 0 {
+                // Zero-value day — a minimum-height placeholder bar so the
+                // day still reads as present, rather than vanishing.
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .fill(Palette.surfaceStroke)
+                    .frame(height: 3)
+            } else {
+                VStack(spacing: isStacked ? 1 : 0) {
+                    // Reversed so the first segment (e.g. easy) ends up at the bottom of the bar.
+                    ForEach(Array(entry.segments.enumerated().reversed()), id: \.offset) { _, segment in
+                        let heightFraction = segment.value / maxValue
+                        Rectangle()
+                            .fill(isStacked ? segment.color : (met ? Palette.open : Palette.started))
+                            .frame(height: segment.value > 0 ? max(3, maxHeight * heightFraction) : 0)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .opacity(isSelected || selectedIndex == nil ? 1 : 0.4)
         .overlay(
             isSelected
                 ? RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(Palette.textPrimary, lineWidth: 1.5)
+                .stroke(Palette.textPrimary, lineWidth: 1.5)
                 : nil
         )
     }

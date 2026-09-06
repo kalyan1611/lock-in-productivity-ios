@@ -85,7 +85,8 @@ struct ActivityCard: View {
             if !isCompletedForTab,
                !waivedForTab,
                TimeUtils.isFreeTime(),
-               let remaining = waiveRemainingForTab {
+               let remaining = waiveRemainingForTab
+            {
                 TicketBadge(remaining: remaining) {
                     onTapWaiveOff(selectedTab.waiveOffType)
                 }
@@ -94,11 +95,24 @@ struct ActivityCard: View {
     }
 
     // MARK: - Steps
-    // Today's stat is always shown; the chart below it always reflects
-    // whichever period (Week/Month) is selected and expands to fill
-    // whatever vertical space remains in the card.
 
-    @ViewBuilder
+    // stepsUntilNextChunk mirrors the firmware's STEPS_PER_CREDIT_CHUNK
+    // (1000 steps = +10m, capped at the daily target) — kept in sync
+    // manually with dns_filter.ino's tieredMinutesFromProgress(). Computed
+    // locally from HealthKit data the app already has, rather than
+    // round-tripping through the ESP32, so it's live rather than only as
+    // fresh as the last /sync.
+
+    private var stepsUntilNextChunk: Int? {
+        let chunk = 1000
+        let steps = healthKit.todaySteps
+        let target = healthKit.targetSteps
+        guard steps < target else { return nil }
+        let nextThreshold = min(((steps / chunk) + 1) * chunk, target)
+        let remaining = nextThreshold - steps
+        return remaining > 0 ? remaining : nil
+    }
+
     private var stepsContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             todayStat(
@@ -106,9 +120,9 @@ struct ActivityCard: View {
                 unit: "of \(healthKit.targetSteps) steps",
                 progress: healthKit.targetSteps > 0
                     ? Double(healthKit.todaySteps) / Double(healthKit.targetSteps) : 0,
-                icon: "figure.walk",
                 isCompleted: healthKit.areTodaysStepsCompleted,
-                waived: waiveOffStatus?.stepsWaivedToday ?? false
+                waived: waiveOffStatus?.stepsWaivedToday ?? false,
+                creditNote: stepsUntilNextChunk.map { "\($0) to next +10m" }
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             PeriodSwitcher(selection: $selectedPeriod)
@@ -123,7 +137,7 @@ struct ActivityCard: View {
                             ActivityBarChart.Segment(
                                 value: Double(day.steps),
                                 color: met ? Palette.open : Palette.started
-                            )
+                            ),
                         ]
                     )
                 },
@@ -140,7 +154,6 @@ struct ActivityCard: View {
 
     // MARK: - Gym
 
-    @ViewBuilder
     private var gymContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             todayStat(
@@ -148,9 +161,9 @@ struct ActivityCard: View {
                 unit: "of \(gymTracker.targetGymDurationMinutes) min target",
                 progress: gymTracker.targetGymDurationSeconds > 0
                     ? gymTracker.totalSecondsToday / gymTracker.targetGymDurationSeconds : 0,
-                icon: "dumbbell.fill",
                 isCompleted: gymTracker.isGymSessionCompleted,
-                waived: waiveOffStatus?.gymWaivedToday ?? false
+                waived: waiveOffStatus?.gymWaivedToday ?? false,
+                creditNote: gymTracker.isGymSessionCompleted ? nil : "Full session: +\(gymTracker.targetGymDurationMinutes)m"
             )
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -168,7 +181,7 @@ struct ActivityCard: View {
                             ActivityBarChart.Segment(
                                 value: minutes,
                                 color: met ? Palette.open : Palette.started
-                            )
+                            ),
                         ]
                     )
                 },
@@ -180,54 +193,107 @@ struct ActivityCard: View {
         }
     }
 
+    // gymGuidanceLabel restores the pre-revamp "Inside gym zone" / distance
+    // / "Location unknown" row, and workoutDurationText restores the
+    // post-checkout "Workout duration: N mins" line — both were dropped
+    // when this moved from the standalone GymCard into ActivityCard.
+
     @ViewBuilder
     private var gymActionButton: some View {
         if gymTracker.isCheckedIn, let checkInDate = gymTracker.checkInDate {
-            GymCountdownButton(gymTracker: gymTracker, checkInDate: checkInDate)
-        } else if gymTracker.hasCheckedOutToday {
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill")
-                Text("Session complete")
+            VStack(spacing: 10) {
+                GymCountdownButton(gymTracker: gymTracker, checkInDate: checkInDate)
+                gymGuidanceLabel
             }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Palette.open)
-            .frame(maxWidth: .infinity)
-            .frame(height: 46)
-            .background(Capsule().fill(Palette.open.opacity(0.12)))
-        } else {
-            Button {
-                gymTracker.checkIn()
-            } label: {
+        } else if gymTracker.hasCheckedOutToday {
+            VStack(spacing: 10) {
                 HStack(spacing: 8) {
-                    Image(systemName: "figure.strengthtraining.traditional")
-                    Text("Check In")
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("Session complete")
                 }
                 .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Palette.open)
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
+                .background(Capsule().fill(Palette.open.opacity(0.12)))
+
+                Text(workoutDurationText)
+                    .font(.caption2)
+                    .foregroundStyle(Palette.textSecondary)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(gymTracker.isInsideGeofence ? Palette.background : Palette.textSecondary)
-            .background(Capsule().fill(gymTracker.isInsideGeofence ? Palette.open : Palette.surfaceStroke))
-            .disabled(!gymTracker.isInsideGeofence)
+        } else {
+            VStack(spacing: 10) {
+                Button {
+                    gymTracker.checkIn()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "figure.strengthtraining.traditional")
+                        Text("Check In")
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(gymTracker.isInsideGeofence ? Palette.background : Palette.textSecondary)
+                .background(Capsule().fill(gymTracker.isInsideGeofence ? Palette.open : Palette.surfaceStroke))
+                .disabled(!gymTracker.isInsideGeofence)
+
+                gymGuidanceLabel
+            }
         }
     }
 
+    private var gymGuidanceLabel: some View {
+        Group {
+            if gymTracker.isInsideGeofence {
+                gymGuidanceRow(icon: "location.fill", text: "Inside gym zone", tint: Palette.open)
+            } else if gymTracker.distanceToGym != nil {
+                gymGuidanceRow(icon: "location", text: formattedDistance, tint: Palette.textSecondary)
+            } else {
+                gymGuidanceRow(icon: "location.slash", text: "Location unknown", tint: Palette.textSecondary)
+            }
+        }
+        .font(.caption2)
+    }
+
+    private func gymGuidanceRow(icon: String, text: String, tint: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+            Text(text)
+        }
+        .foregroundStyle(tint)
+    }
+
+    private var formattedDistance: String {
+        guard let distance = gymTracker.distanceToGym else { return "" }
+        return distance >= 1000
+            ? String(format: "%.1f km away", distance / 1000)
+            : String(format: "%.0f m away", distance)
+    }
+
+    private var workoutDurationText: String {
+        guard let inTime = gymTracker.lastCheckInDate, let outTime = gymTracker.lastCheckOutDate else {
+            return "Workout logged for today"
+        }
+        let minutes = Int(outTime.timeIntervalSince(inTime) / 60)
+        return "Workout duration: \(minutes) mins"
+    }
+
     // MARK: - LeetCode
+
     // Chart is backed by locally-cached daily easy/medium/hard totals (see
     // LeetCodeManager.breakdownHistory) since the public API only exposes a
     // rolling recent-submissions list, not backdated calendar data. Bars
     // render as a stack of easy/medium/hard segments, color-matched to the
     // difficultyBreakdown row above the chart.
 
-    @ViewBuilder
     private var leetCodeContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             todayStat(
                 value: "\(leetCode.totalTodayCount)",
                 unit: "of \(leetCode.targetProblems) problems",
                 progress: leetCode.progress,
-                icon: "chevron.left.forwardslash.chevron.right",
                 isCompleted: leetCode.isGoalMet,
                 waived: waiveOffStatus?.leetcodeWaivedToday ?? false
             )
@@ -244,7 +310,7 @@ struct ActivityCard: View {
                         segments: [
                             ActivityBarChart.Segment(value: Double(day.easy), color: Palette.open),
                             ActivityBarChart.Segment(value: Double(day.medium), color: Palette.waived),
-                            ActivityBarChart.Segment(value: Double(day.hard), color: Palette.locked)
+                            ActivityBarChart.Segment(value: Double(day.hard), color: Palette.locked),
                         ]
                     )
                 },
@@ -289,24 +355,23 @@ struct ActivityCard: View {
 
     // MARK: - Shared "today" stat block
 
+    // Horizontal progress bar replaces the old ring+icon combo — the icon
+    // duplicated what GoalTabSwitcher already shows, so it's dropped
+    // entirely rather than relocated. creditNote restores the per-tab
+    // "what do I earn" line that existed pre-revamp (StepsCard's chunked
+    // "+10m per 1000 steps", GymCard's flat "Full session: +45m").
+
     private func todayStat(
         value: String,
         unit: String,
         progress: Double,
-        icon: String,
         isCompleted: Bool,
-        waived: Bool
+        waived: Bool,
+        creditNote: String? = nil
     ) -> some View {
         let color = GoalColor.forProgress(progress, isCompleted: isCompleted, waived: waived)
-        return HStack(spacing: 16) {
-            ZStack {
-                RingProgress(progress: progress, color: color, lineWidth: 7)
-                    .frame(width: 56, height: 56)
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(color)
-            }
-            VStack(alignment: .leading, spacing: 2) {
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(value)
                     .font(Typography.display(28))
                     .foregroundStyle(Palette.textPrimary)
@@ -314,19 +379,36 @@ struct ActivityCard: View {
                     .font(.caption)
                     .foregroundStyle(Palette.textSecondary)
             }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Palette.surfaceStroke)
+                    Capsule()
+                        .fill(color)
+                        .frame(width: geo.size.width * min(max(progress, 0), 1))
+                }
+            }
+            .frame(height: 8)
+
+            if let creditNote {
+                Text(creditNote)
+                    .font(.caption2)
+                    .foregroundStyle(Palette.neutral)
+            }
         }
     }
 }
 
 // MARK: - Gym Countdown Button
 
-// Pulled out of ActivityCard's gymActionButton if/else chain on purpose:
-// TimelineView is a heavily generic type, and mixing it directly into a
-// multi-branch @ViewBuilder if/else caused a "Generic parameter 'Content'
-// could not be inferred" error. Isolating it in its own view, and further
-// isolating the button-building work into a plain method with a small
-// number of let bindings, keeps each piece simple enough for the type
-// checker to resolve.
+/// Pulled out of ActivityCard's gymActionButton if/else chain on purpose:
+/// TimelineView is a heavily generic type, and mixing it directly into a
+/// multi-branch @ViewBuilder if/else caused a "Generic parameter 'Content'
+/// could not be inferred" error. Isolating it in its own view, and further
+/// isolating the button-building work into a plain method with a small
+/// number of let bindings, keeps each piece simple enough for the type
+/// checker to resolve.
 private struct GymCountdownButton: View {
     @ObservedObject var gymTracker: GymTracker
     let checkInDate: Date

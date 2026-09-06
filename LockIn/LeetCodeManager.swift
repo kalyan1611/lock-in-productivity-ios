@@ -37,6 +37,7 @@ final class LeetCodeManager: ObservableObject {
     private let graphqlEndpoint = URL(string: AppConfig.LeetCode.graphqlEndpoint)!
 
     // MARK: - Local History Persistence
+
     //
     // LeetCode's public GraphQL only exposes a rolling "recent submissions"
     // list, not calendar-bucketed history — unlike HealthKit (steps) or our
@@ -58,6 +59,7 @@ final class LeetCodeManager: ObservableObject {
     }
 
     // MARK: - Difficulty breakdown keys
+
     //
     // The original cache only stored the day's total, which was enough for
     // a single-color bar. The stacked chart needs each difficulty's count
@@ -69,9 +71,11 @@ final class LeetCodeManager: ObservableObject {
     private func easyKey(_ date: Date) -> String {
         dailyCountKeyPrefix + AppConfig.DefaultsKey.leetcodeEasySuffix + dateString(date)
     }
+
     private func mediumKey(_ date: Date) -> String {
         dailyCountKeyPrefix + AppConfig.DefaultsKey.leetcodeMediumSuffix + dateString(date)
     }
+
     private func hardKey(_ date: Date) -> String {
         dailyCountKeyPrefix + AppConfig.DefaultsKey.leetcodeHardSuffix + dateString(date)
     }
