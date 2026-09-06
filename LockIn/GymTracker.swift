@@ -298,7 +298,10 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     func loadTodayAccumulatedTime() {
         let todayKey = todayDateString()
-        let storedSeconds = userDefaults.double(forKey: secondsKey + todayKey)
+        // Keychain, not UserDefaults — see PersistentStore.swift. This is
+        // the same value Week/Month history charts read back, and losing
+        // it on a reinstall would silently erase past days from the chart.
+        let storedSeconds = KeychainStore.double(forKey: secondsKey + todayKey)
 
         var activeSession: TimeInterval = 0
         if let entryTimestamp = userDefaults.object(forKey: entryTimeKey) as? Double {
@@ -315,7 +318,7 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     private func saveTodayAccumulatedTime(_ seconds: TimeInterval) {
         let todayKey = todayDateString()
-        userDefaults.set(seconds, forKey: secondsKey + todayKey)
+        KeychainStore.setDouble(seconds, forKey: secondsKey + todayKey)
         totalSecondsToday = seconds
         isGymSessionCompleted = seconds >= targetGymDurationSeconds
     }
@@ -333,7 +336,7 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         for offset in stride(from: days - 1, through: 0, by: -1) {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: Date()) else { continue }
             let key = secondsKey + formatter.string(from: day)
-            let seconds = userDefaults.double(forKey: key)
+            let seconds = KeychainStore.double(forKey: key)
             result.append((date: calendar.startOfDay(for: day), seconds: seconds))
         }
         return result

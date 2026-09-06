@@ -4,10 +4,19 @@ import SwiftUI
 
 /// Generic week/month bar chart used by Steps, Gym, and LeetCode.
 /// Week view (7 bars, room to spare) always shows each bar's total above
-/// it. Month view (~30 bars, tight) shows nothing on top by default and
-/// only reveals a label — total, or the easy/medium/hard breakdown for
-/// LeetCode — for whichever bar is tapped, so only one label ever needs
-/// to fit at a time.
+/// it. Month view (~30 bars, tight) shows nothing above the bars at all —
+/// a label above a ~7pt-wide bar is unreadable no matter the font size —
+/// and instead just reports which bar is selected via `selectedIndex`, so
+/// the caller can render a proper, readable detail row elsewhere (e.g.
+/// under the Week/Month switcher).
+///
+/// Each bar column is laid out as three FIXED-height rows (top label,
+/// bar area, day label) rather than relying on a `Spacer` to bottom-align
+/// content — this makes every column's vertical geometry deterministic and
+/// identical, which matters because the optional target line (see
+/// `showTargetLine`) is positioned using those exact same constants. If the
+/// bar area's real height ever drifted from what the line's offset assumes,
+/// the two would silently disagree; fixed rows make that impossible.
 struct ActivityBarChart: View {
     struct Segment {
         let value: Double
@@ -26,10 +35,19 @@ struct ActivityBarChart: View {
     let entries: [Entry]
     let target: Double
     let period: StatsPeriod
+    /// Selected bar index, owned by the caller so it can render a detail
+    /// view for the selection outside this chart. Only meaningful in month
+    /// view — week bars aren't tappable (see the tap gesture below).
+    @Binding var selectedIndex: Int?
     /// Formats a raw value into display text, e.g. "6,743" or "45m".
+    /// Used for the per-bar total shown above each bar in week view.
     let valueLabel: (Double) -> String
-
-    @State private var selectedIndex: Int?
+    /// Whether to draw a dashed target-goal line. Steps and Gym use a
+    /// single green/blue bar color to show met-vs-short, so the line is
+    /// redundant there; LeetCode's bars are stacked easy/medium/hard
+    /// segments with no single met/short color, so the line is the only
+    /// way to see "did today clear target" at a glance. Defaults to true.
+    var showTargetLine: Bool = true
 
     private var maxValue: Double {
         max(entries.map(\.total).max() ?? 0, target, 1)
@@ -50,77 +68,114 @@ struct ActivityBarChart: View {
         period == .month ? 2 : 4
     }
 
-    private var topLabelFontSize: CGFloat {
-        period == .month ? 8 : 9
+    private var topLabelFontSize: CGFloat { 11 }
+
+    /// Small fixed inset so bars don't touch the very edge of the chart's
+    /// bounding box.
+    private let axisChartGap: CGFloat = 4
+
+    /// Fixed height of each bar's own day-label row (e.g. "Tue", "14").
+    private let axisLabelHeight: CGFloat = 12
+
+    /// Vertical gap between the three fixed rows in each bar column
+    /// (top label / bar area / day label).
+    private let rowSpacing: CGFloat = 3
+
+    /// Reserved height above the bar for week view's per-bar total label.
+    /// Month reserves almost nothing since no per-bar label renders there
+    /// anymore — that space goes to taller bars instead.
+    private var reservedTopHeight: CGFloat {
+        period == .month ? 4 : 16
+    }
+
+    /// Fraction of the way down from the top of the bar area the target
+    /// line should sit — 0 at the very top (target == scale max), 1 at the
+    /// baseline. `nil` when there's nothing to draw.
+    private var targetLineFraction: CGFloat? {
+        guard showTargetLine, target > 0, maxValue > 0 else { return nil }
+        let clamped = min(target / maxValue, 1)
+        return CGFloat(1 - clamped)
     }
 
     var body: some View {
         GeometryReader { geo in
             let barSpacing: CGFloat = period == .month ? 2 : 8
-            let barWidth = (geo.size.width - barSpacing * CGFloat(max(entries.count - 1, 0))) / CGFloat(max(entries.count, 1))
-            let axisLabelHeight: CGFloat = 12
-            let reservedTopHeight: CGFloat = period == .month ? 22 : 16
-            let barAreaHeight = max(geo.size.height - axisLabelHeight - reservedTopHeight, 20)
+            // Same three constants that size each bar column below —
+            // reused here so the target line's offset can never drift
+            // from what the bars themselves use.
+            let verticalOverhead = axisLabelHeight + reservedTopHeight + rowSpacing * 2
+            let chartWidth = max(geo.size.width - axisChartGap, 20)
+            let barWidth = (chartWidth - barSpacing * CGFloat(max(entries.count - 1, 0))) / CGFloat(max(entries.count, 1))
+            let barAreaHeight = max(geo.size.height - verticalOverhead, 20)
 
-            HStack(alignment: .bottom, spacing: barSpacing) {
-                ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
-                    let isSelected = selectedIndex == index
-                    // Week: always show a label. Month: only for the tapped bar.
-                    let showLabel = period != .month || isSelected
-                    let showBreakdown = showLabel && isSelected && entry.segments.count > 1
+            ZStack(alignment: .topLeading) {
+                barsRow(barWidth: barWidth, barSpacing: barSpacing, barAreaHeight: barAreaHeight)
+                    .frame(width: chartWidth, height: geo.size.height, alignment: .top)
 
-                    VStack(spacing: 3) {
-                        // Spacer(minLength: 0) makes this column "greedy" so
-                        // the HStack fills the full height GeometryReader
-                        // gives it and bottom-aligns everything, instead of
-                        // shrinking to minimal size and pinning to the top.
-                        Spacer(minLength: 0)
+                if let fraction = targetLineFraction {
+                    TargetLine()
+                        .frame(width: chartWidth, height: 1)
+                        // Top of the bar-area row is exactly reservedTopHeight
+                        // + rowSpacing down from the top of the chart, since
+                        // every row above it now has a fixed, known height —
+                        // no Spacer-driven guesswork about where that lands.
+                        .offset(y: reservedTopHeight + rowSpacing + fraction * barAreaHeight)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
+            .padding(.leading, axisChartGap)
+        }
+    }
 
-                        topLabel(for: entry, show: showLabel, showBreakdown: showBreakdown)
+    // MARK: - Bars
 
+    private func barsRow(barWidth: CGFloat, barSpacing: CGFloat, barAreaHeight: CGFloat) -> some View {
+        HStack(alignment: .top, spacing: barSpacing) {
+            ForEach(Array(entries.enumerated()), id: \.offset) { index, entry in
+                let isSelected = selectedIndex == index
+
+                VStack(spacing: rowSpacing) {
+                    topRow(for: entry)
+
+                    ZStack(alignment: .bottom) {
                         stackedBar(entry: entry, isSelected: isSelected, maxHeight: barAreaHeight)
+                    }
+                    .frame(height: barAreaHeight, alignment: .bottom)
 
-                        Text(shouldShowAxisLabel(index) ? dayLabel(entry.date) : "")
-                            .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Palette.textSecondary)
-                    }
-                    .frame(width: barWidth)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        selectedIndex = isSelected ? nil : index
-                    }
+                    Text(shouldShowAxisLabel(index) ? dayLabel(entry.date) : "")
+                        .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Palette.textSecondary)
+                        .frame(height: axisLabelHeight, alignment: .top)
+                }
+                .frame(width: barWidth)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // Week already shows every bar's value up top, so
+                    // there's nothing a tap would reveal — only month
+                    // (which relies on the external detail row) needs this.
+                    guard period == .month else { return }
+                    selectedIndex = isSelected ? nil : index
                 }
             }
         }
     }
 
-    // MARK: - Top label (total, or per-segment breakdown when selected)
+    // MARK: - Top row (week only — total above each bar; fixed height always)
 
     @ViewBuilder
-    private func topLabel(for entry: Entry, show: Bool, showBreakdown: Bool) -> some View {
-        if !show || entry.total <= 0 {
-            Color.clear.frame(height: topLabelFontSize + 2)
-        } else if showBreakdown {
-            HStack(spacing: 3) {
-                ForEach(Array(entry.segments.enumerated()), id: \.offset) { _, segment in
-                    if segment.value > 0 {
-                        Text(valueLabel(segment.value))
-                            .font(.system(size: topLabelFontSize, weight: .bold, design: .monospaced))
-                            .foregroundStyle(segment.color)
-                    }
-                }
+    private func topRow(for entry: Entry) -> some View {
+        Group {
+            if period != .month, entry.total > 0 {
+                Text(valueLabel(entry.total))
+                    .font(.system(size: topLabelFontSize, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Palette.textSecondary)
+                    .fixedSize()
+                    .lineLimit(1)
+            } else {
+                Color.clear
             }
-            // fixedSize lets the label render at its true width instead of
-            // being squeezed into barWidth and truncated to "...".
-            .fixedSize()
-            .lineLimit(1)
-        } else {
-            Text(valueLabel(entry.total))
-                .font(.system(size: topLabelFontSize, weight: .semibold, design: .monospaced))
-                .foregroundStyle(Palette.textSecondary)
-                .fixedSize()
-                .lineLimit(1)
         }
+        .frame(height: reservedTopHeight, alignment: .bottom)
     }
 
     // MARK: - Bar (single color, stacked segments, or empty-day placeholder)
@@ -157,5 +212,26 @@ struct ActivityBarChart: View {
                 .stroke(Palette.textPrimary, lineWidth: 1.5)
                 : nil
         )
+    }
+}
+
+// MARK: - Target Line
+
+/// A single dashed horizontal reference line spanning whatever width it's
+/// given. GeometryReader is used just to read that width, since Path needs
+/// concrete points rather than a flexible frame.
+private struct TargetLine: View {
+    var body: some View {
+        GeometryReader { geo in
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: 0))
+                path.addLine(to: CGPoint(x: geo.size.width, y: 0))
+            }
+            .stroke(
+                Palette.textSecondary.opacity(0.6),
+                style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+            )
+        }
+        .frame(height: 1)
     }
 }

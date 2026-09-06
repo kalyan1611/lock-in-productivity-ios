@@ -48,7 +48,6 @@ final class LeetCodeManager: ObservableObject {
     // endpoint (tracked separately).
 
     private let dailyCountKeyPrefix = AppConfig.DefaultsKey.leetcodeDailyCountPrefix
-    private let userDefaults = UserDefaults.standard
 
     private func dateString(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -92,10 +91,14 @@ final class LeetCodeManager: ObservableObject {
     /// without needing a separate write path.
     private func recordTodayCount() {
         let today = Date()
-        userDefaults.set(totalTodayCount, forKey: dailyCountKeyPrefix + dateString(today))
-        userDefaults.set(easyTodayCount, forKey: easyKey(today))
-        userDefaults.set(mediumTodayCount, forKey: mediumKey(today))
-        userDefaults.set(hardTodayCount, forKey: hardKey(today))
+        // Keychain, not UserDefaults — see PersistentStore.swift. This is
+        // the only local record of LeetCode's daily history (the public API
+        // has no backdated calendar), so losing it on reinstall would be
+        // permanent, unlike ESP32-tracked state which lives on the router.
+        KeychainStore.setInt(totalTodayCount, forKey: dailyCountKeyPrefix + dateString(today))
+        KeychainStore.setInt(easyTodayCount, forKey: easyKey(today))
+        KeychainStore.setInt(mediumTodayCount, forKey: mediumKey(today))
+        KeychainStore.setInt(hardTodayCount, forKey: hardKey(today))
     }
 
     /// Last `days` calendar days of solved-problem totals, oldest first.
@@ -108,7 +111,7 @@ final class LeetCodeManager: ObservableObject {
         for offset in stride(from: days - 1, through: 0, by: -1) {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: Date()) else { continue }
             let key = dailyCountKeyPrefix + dateString(day)
-            let count = userDefaults.integer(forKey: key)
+            let count = KeychainStore.integer(forKey: key)
             result.append((date: calendar.startOfDay(for: day), count: count))
         }
         return result
@@ -123,9 +126,9 @@ final class LeetCodeManager: ObservableObject {
             guard let day = calendar.date(byAdding: .day, value: -offset, to: Date()) else { continue }
             result.append(DailyBreakdown(
                 date: calendar.startOfDay(for: day),
-                easy: userDefaults.integer(forKey: easyKey(day)),
-                medium: userDefaults.integer(forKey: mediumKey(day)),
-                hard: userDefaults.integer(forKey: hardKey(day))
+                easy: KeychainStore.integer(forKey: easyKey(day)),
+                medium: KeychainStore.integer(forKey: mediumKey(day)),
+                hard: KeychainStore.integer(forKey: hardKey(day))
             ))
         }
         return result
@@ -138,7 +141,7 @@ final class LeetCodeManager: ObservableObject {
         let calendar = Calendar.current
         guard let yesterday = calendar.date(byAdding: .day, value: -1, to: Date()) else { return false }
         let key = dailyCountKeyPrefix + dateString(yesterday)
-        return userDefaults.object(forKey: key) != nil
+        return KeychainStore.exists(forKey: key)
     }
 
     // MARK: - Fetch Today's Stats

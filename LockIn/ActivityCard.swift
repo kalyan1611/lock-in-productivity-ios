@@ -11,6 +11,13 @@ struct ActivityCard: View {
     let waiveOffStatus: NetworkManager.WaiveOffStatus?
     let onTapWaiveOff: (NetworkManager.WaiveOffType) -> Void
 
+    /// Which month-view bar is currently tapped, if any. Lives here (not
+    /// inside ActivityBarChart) so a readable detail row can be rendered
+    /// above the chart, under the Week/Month switcher, instead of cramming
+    /// text onto a ~7pt-wide bar. Indices aren't meaningful across a tab or
+    /// period switch, so both reset it back to nil.
+    @State private var selectedBarIndex: Int?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
@@ -31,6 +38,8 @@ struct ActivityCard: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Palette.surfaceStroke, lineWidth: 1)
         )
+        .onChange(of: selectedTab) { _, _ in selectedBarIndex = nil }
+        .onChange(of: selectedPeriod) { _, _ in selectedBarIndex = nil }
     }
 
     // MARK: - Tab content dispatch
@@ -113,6 +122,36 @@ struct ActivityCard: View {
         return remaining > 0 ? remaining : nil
     }
 
+    private var stepsEntries: [ActivityBarChart.Entry] {
+        healthKit.stepsHistory.map { day in
+            let met = healthKit.targetSteps > 0
+                ? Double(day.steps) >= Double(healthKit.targetSteps) : false
+            return ActivityBarChart.Entry(
+                date: day.date,
+                segments: [
+                    ActivityBarChart.Segment(
+                        value: Double(day.steps),
+                        color: met ? Palette.open : Palette.started
+                    ),
+                ]
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var stepsSelectedDetail: some View {
+        if selectedPeriod == .month, let index = selectedBarIndex, stepsEntries.indices.contains(index) {
+            let entry = stepsEntries[index]
+            SelectedBarDetail(
+                dateText: fullDateLabel(entry.date),
+                totalText: "\(Int(entry.total))",
+                unitText: "steps",
+                totalColor: entry.total >= Double(healthKit.targetSteps) ? Palette.open : Palette.textPrimary,
+                breakdown: []
+            )
+        }
+    }
+
     private var stepsContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             todayStat(
@@ -126,24 +165,15 @@ struct ActivityCard: View {
             )
             .frame(maxWidth: .infinity, alignment: .leading)
             PeriodSwitcher(selection: $selectedPeriod)
+            stepsSelectedDetail
 
             ActivityBarChart(
-                entries: healthKit.stepsHistory.map { day in
-                    let met = healthKit.targetSteps > 0
-                        ? Double(day.steps) >= Double(healthKit.targetSteps) : false
-                    return ActivityBarChart.Entry(
-                        date: day.date,
-                        segments: [
-                            ActivityBarChart.Segment(
-                                value: Double(day.steps),
-                                color: met ? Palette.open : Palette.started
-                            ),
-                        ]
-                    )
-                },
+                entries: stepsEntries,
                 target: Double(healthKit.targetSteps),
                 period: selectedPeriod,
-                valueLabel: { "\(Int($0))" }
+                selectedIndex: $selectedBarIndex,
+                valueLabel: { "\(Int($0))" },
+                showTargetLine: false
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .task(id: selectedPeriod) {
@@ -153,6 +183,37 @@ struct ActivityCard: View {
     }
 
     // MARK: - Gym
+
+    private var gymEntries: [ActivityBarChart.Entry] {
+        let history = gymTracker.secondsHistory(days: selectedPeriod == .week ? 7 : 30)
+        return history.map { day in
+            let minutes = day.seconds / 60
+            let met = minutes >= Double(gymTracker.targetGymDurationMinutes)
+            return ActivityBarChart.Entry(
+                date: day.date,
+                segments: [
+                    ActivityBarChart.Segment(
+                        value: minutes,
+                        color: met ? Palette.open : Palette.started
+                    ),
+                ]
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var gymSelectedDetail: some View {
+        if selectedPeriod == .month, let index = selectedBarIndex, gymEntries.indices.contains(index) {
+            let entry = gymEntries[index]
+            SelectedBarDetail(
+                dateText: fullDateLabel(entry.date),
+                totalText: "\(Int(entry.total))",
+                unitText: "min",
+                totalColor: entry.total >= Double(gymTracker.targetGymDurationMinutes) ? Palette.open : Palette.textPrimary,
+                breakdown: []
+            )
+        }
+    }
 
     private var gymContent: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -169,25 +230,15 @@ struct ActivityCard: View {
 
             gymActionButton
             PeriodSwitcher(selection: $selectedPeriod)
+            gymSelectedDetail
 
-            let history = gymTracker.secondsHistory(days: selectedPeriod == .week ? 7 : 30)
             ActivityBarChart(
-                entries: history.map { day in
-                    let minutes = day.seconds / 60
-                    let met = minutes >= Double(gymTracker.targetGymDurationMinutes)
-                    return ActivityBarChart.Entry(
-                        date: day.date,
-                        segments: [
-                            ActivityBarChart.Segment(
-                                value: minutes,
-                                color: met ? Palette.open : Palette.started
-                            ),
-                        ]
-                    )
-                },
+                entries: gymEntries,
                 target: Double(gymTracker.targetGymDurationMinutes),
                 period: selectedPeriod,
-                valueLabel: { "\(Int($0))m" }
+                selectedIndex: $selectedBarIndex,
+                valueLabel: { "\(Int($0))m" },
+                showTargetLine: false
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -288,6 +339,35 @@ struct ActivityCard: View {
     // render as a stack of easy/medium/hard segments, color-matched to the
     // difficultyBreakdown row above the chart.
 
+    private var leetCodeEntries: [ActivityBarChart.Entry] {
+        let breakdown = leetCode.breakdownHistory(days: selectedPeriod == .week ? 7 : 30)
+        return breakdown.map { day in
+            ActivityBarChart.Entry(date: day.date, segments: [
+                ActivityBarChart.Segment(value: Double(day.easy), color: Palette.open),
+                ActivityBarChart.Segment(value: Double(day.medium), color: Palette.waived),
+                ActivityBarChart.Segment(value: Double(day.hard), color: Palette.locked),
+            ])
+        }
+    }
+
+    @ViewBuilder
+    private var leetCodeSelectedDetail: some View {
+        if selectedPeriod == .month, let index = selectedBarIndex, leetCodeEntries.indices.contains(index) {
+            let entry = leetCodeEntries[index]
+            SelectedBarDetail(
+                dateText: fullDateLabel(entry.date),
+                totalText: "\(Int(entry.total))",
+                unitText: "solved",
+                totalColor: entry.total >= Double(leetCode.targetProblems) ? Palette.open : Palette.textPrimary,
+                breakdown: [
+                    (label: "EASY", value: "\(Int(entry.segments[0].value))", color: Palette.open),
+                    (label: "MEDIUM", value: "\(Int(entry.segments[1].value))", color: Palette.waived),
+                    (label: "HARD", value: "\(Int(entry.segments[2].value))", color: Palette.locked),
+                ]
+            )
+        }
+    }
+
     private var leetCodeContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             todayStat(
@@ -301,21 +381,13 @@ struct ActivityCard: View {
 
             difficultyBreakdown
             PeriodSwitcher(selection: $selectedPeriod)
+            leetCodeSelectedDetail
 
-            let breakdown = leetCode.breakdownHistory(days: selectedPeriod == .week ? 7 : 30)
             ActivityBarChart(
-                entries: breakdown.map { day in
-                    ActivityBarChart.Entry(
-                        date: day.date,
-                        segments: [
-                            ActivityBarChart.Segment(value: Double(day.easy), color: Palette.open),
-                            ActivityBarChart.Segment(value: Double(day.medium), color: Palette.waived),
-                            ActivityBarChart.Segment(value: Double(day.hard), color: Palette.locked),
-                        ]
-                    )
-                },
+                entries: leetCodeEntries,
                 target: Double(leetCode.targetProblems),
                 period: selectedPeriod,
+                selectedIndex: $selectedBarIndex,
                 valueLabel: { "\(Int($0))" }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -360,6 +432,13 @@ struct ActivityCard: View {
     // entirely rather than relocated. creditNote restores the per-tab
     // "what do I earn" line that existed pre-revamp (StepsCard's chunked
     // "+10m per 1000 steps", GymCard's flat "Full session: +45m").
+
+    /// "Wed, Feb 12" — used by each tab's SelectedBarDetail row.
+    private func fullDateLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE, MMM d"
+        return formatter.string(from: date)
+    }
 
     private func todayStat(
         value: String,
@@ -454,4 +533,69 @@ private struct GymCountdownButton: View {
 
 #Preview("iPhone") {
     ContentView()
+}
+
+// MARK: - Selected Bar Detail
+
+/// Readable stand-in for the per-bar label month view can't fit. Rendered
+/// between the Week/Month switcher and the chart itself whenever a month
+/// bar is tapped, so there's a full-width row of room instead of squeezing
+/// text above a ~7pt-wide bar.
+private struct SelectedBarDetail: View {
+    let dateText: String
+    let totalText: String
+    let unitText: String
+    let totalColor: Color
+    /// Per-segment rows (e.g. Easy/Medium/Hard). Empty for single-value
+    /// charts (Steps, Gym), which just show the date + total.
+    let breakdown: [(label: String, value: String, color: Color)]
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(dateText)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(0.6)
+                    .foregroundStyle(Palette.textSecondary)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text(totalText)
+                        .font(Typography.display(22))
+                        .foregroundStyle(totalColor)
+                        .contentTransition(.numericText())
+                    Text(unitText)
+                        .font(.caption)
+                        .foregroundStyle(Palette.textSecondary)
+                }
+            }
+
+            Spacer(minLength: 12)
+
+            if !breakdown.isEmpty {
+                HStack(spacing: 14) {
+                    ForEach(Array(breakdown.enumerated()), id: \.offset) { _, item in
+                        VStack(spacing: 3) {
+                            HStack(spacing: 4) {
+                                Circle().fill(item.color).frame(width: 6, height: 6)
+                                Text(item.label)
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(Palette.textSecondary)
+                            }
+                            Text(item.value)
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(Palette.textPrimary)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.surfaceRaised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Palette.surfaceStroke, lineWidth: 1)
+        )
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
 }
