@@ -1,11 +1,3 @@
-//
-//  GoalTab.swift
-//  LockIn
-//
-//  Created by kalyan cherukuru on 06/09/26.
-//
-
-
 import SwiftUI
 
 enum GoalTab: String, CaseIterable {
@@ -30,8 +22,9 @@ enum GoalTab: String, CaseIterable {
     }
 }
 
+/// Today's stat is always visible in ActivityCard now — this only controls
+/// the history chart underneath it, so there's no "Day" case anymore.
 enum StatsPeriod: String, CaseIterable {
-    case day = "Day"
     case week = "Week"
     case month = "Month"
 }
@@ -67,29 +60,22 @@ struct GoalTabSwitcher: View {
 
 struct PeriodSwitcher: View {
     @Binding var selection: StatsPeriod
-    var disabledPeriods: Set<StatsPeriod> = []
 
     var body: some View {
         HStack(spacing: 4) {
             ForEach(StatsPeriod.allCases, id: \.self) { period in
-                let isDisabled = disabledPeriods.contains(period)
                 Button {
-                    guard !isDisabled else { return }
                     selection = period
                 } label: {
                     Text(period.rawValue.uppercased())
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .tracking(0.5)
-                        .foregroundStyle(
-                            isDisabled ? Palette.textTertiary :
-                            selection == period ? Palette.background : Palette.textSecondary
-                        )
+                        .foregroundStyle(selection == period ? Palette.background : Palette.textSecondary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(Capsule().fill(selection == period && !isDisabled ? Palette.textPrimary : Color.clear))
+                        .background(Capsule().fill(selection == period ? Palette.textPrimary : Color.clear))
                 }
                 .buttonStyle(.plain)
-                .disabled(isDisabled)
             }
         }
     }

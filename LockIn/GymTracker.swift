@@ -320,6 +320,25 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         isGymSessionCompleted = seconds >= targetGymDurationSeconds
     }
 
+    /// Last `days` calendar days of gym seconds, oldest first, reading the
+    /// same date-keyed entries `loadTodayAccumulatedTime` already writes.
+    func secondsHistory(days: Int) -> [(date: Date, seconds: Double)] {
+        let calendar = Calendar.current
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy-MM-dd"
+
+        var result: [(date: Date, seconds: Double)] = []
+        for offset in stride(from: days - 1, through: 0, by: -1) {
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: Date()) else { continue }
+            let key = secondsKey + formatter.string(from: day)
+            let seconds = userDefaults.double(forKey: key)
+            result.append((date: calendar.startOfDay(for: day), seconds: seconds))
+        }
+        return result
+    }
+
     // MARK: - Date
 
     private func todayDateString() -> String {

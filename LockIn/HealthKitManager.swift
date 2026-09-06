@@ -21,6 +21,7 @@ final class HealthKitManager: ObservableObject {
     @Published var todaySteps: Int = 0
     @Published var targetSteps: Int = AppConfig.Steps.dailyTarget
     @Published var authorizationStatus: HKAuthorizationStatus = .notDetermined
+    @Published var stepsHistory: [(date: Date, steps: Int)] = []
 
     /// True once today's steps crosses targetSteps
     @Published var areTodaysStepsCompleted = false
@@ -96,6 +97,50 @@ final class HealthKitManager: ObservableObject {
         }
         observerQuery = query
         healthStore.execute(query)
+    }
+
+    func fetchStepsHistory(days: Int) async throws -> [(date: Date, steps: Int)] {
+        let calendar = Calendar.current
+        let now = Date()
+        guard let startDate = calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now)) else {
+            return []
+        }
+
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: now, options: .strictStartDate)
+        var interval = DateComponents()
+        interval.day = 1
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKStatisticsCollectionQuery(
+                quantityType: stepType,
+                quantitySamplePredicate: predicate,
+                options: .cumulativeSum,
+                anchorDate: calendar.startOfDay(for: startDate),
+                intervalComponents: interval
+            )
+            query.initialResultsHandler = { _, results, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                var daily: [(date: Date, steps: Int)] = []
+                results?.enumerateStatistics(from: startDate, to: now) { stats, _ in
+                    let sum = stats.sumQuantity()?.doubleValue(for: .count()) ?? 0
+                    daily.append((date: stats.startDate, steps: Int(sum)))
+                }
+                continuation.resume(returning: daily)
+            }
+            healthStore.execute(query)
+        }
+    }
+
+    @MainActor
+    func syncStepsHistory(days: Int) async {
+        do {
+            stepsHistory = try await fetchStepsHistory(days: days)
+        } catch {
+            print("Steps history sync failed: \(error.localizedDescription)")
+        }
     }
 
     /// Fetch latest step count and push all metrics to ESP32.

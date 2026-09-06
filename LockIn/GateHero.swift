@@ -4,7 +4,6 @@ import SwiftUI
 // MARK: - Gate Hero (Device Status Card)
 
 struct GateHero: View {
-
     let isOpen: Bool?
     let deviceOnline: Bool
     let errorMessage: String?
@@ -32,11 +31,11 @@ struct GateHero: View {
     private var tint: Color {
         switch isOpen {
         case .some(true):
-            return isLowBalance ? Palette.waived : Palette.open
+            isLowBalance ? Palette.waived : Palette.open
         case .some(false):
-            return Palette.locked
+            Palette.locked
         case .none:
-            return Palette.neutral
+            Palette.neutral
         }
     }
 
@@ -72,11 +71,11 @@ struct GateHero: View {
     private var icon: String {
         switch isOpen {
         case .some(true):
-            return "lock.open.fill"
+            "lock.open.fill"
         case .some(false):
-            return "lock.fill"
+            "lock.fill"
         case .none:
-            return "questionmark"
+            "questionmark"
         }
     }
 
@@ -84,7 +83,6 @@ struct GateHero: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-
             identityRow
 
             if TimeUtils.isFreeTime() {
@@ -113,7 +111,6 @@ struct GateHero: View {
 
     private var identityRow: some View {
         HStack(alignment: .center, spacing: 14) {
-
             ZStack {
                 Circle()
                     .fill(tint.opacity(0.15))
@@ -190,7 +187,6 @@ struct GateHero: View {
 
     private var creditSection: some View {
         HStack(spacing: 0) {
-
             // Available credit
             HStack(spacing: 7) {
                 Image(systemName: availableCreditIcon)
@@ -267,7 +263,8 @@ struct GateHero: View {
         }
 
         if let available = availableToClaimMinutes,
-           available > 0 {
+           available > 0
+        {
             return "+\(formatMinutes(available)) available"
         }
 
@@ -278,7 +275,8 @@ struct GateHero: View {
 
     private var balanceIcon: String {
         if let remaining = remainingMinutes,
-           remaining > 0 {
+           remaining > 0
+        {
             return "clock.fill"
         }
 
@@ -298,7 +296,7 @@ struct GateHero: View {
 
         return Palette.textPrimary
     }
-    
+
     private var availableCreditTextTint: Color {
         if goalsFullyMet == true {
             return Palette.open
@@ -317,7 +315,8 @@ struct GateHero: View {
         }
 
         if let remaining = remainingMinutes,
-           remaining > 0 {
+           remaining > 0
+        {
             return "\(formatMinutes(remaining)) balance"
         }
 
@@ -328,7 +327,7 @@ struct GateHero: View {
 
     private var showsClaimButton: Bool {
         goalsFullyMet != true &&
-        (availableToClaimMinutes ?? 0) > 0
+            (availableToClaimMinutes ?? 0) > 0
     }
 
     private var claimButton: some View {

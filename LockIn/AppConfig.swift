@@ -80,6 +80,18 @@ enum AppConfig {
         static let gymLastCheckInTime = "LockIn_LastCheckInTime"
         static let gymLastCheckOutTime = "LockIn_LastCheckOutTime"
 
+        /// One entry per calendar day, mirroring gymSecondsPrefix's pattern —
+        /// caches LeetCode's daily solved-count locally since the API itself
+        /// doesn't expose backdated history.
+        static let leetcodeDailyCountPrefix = "LockIn_LeetCode_DailyCount_"
+
+        /// Per-difficulty suffixes appended after `leetcodeDailyCountPrefix`
+        /// + the date string, so the stacked chart can read back each
+        /// difficulty's count for a given day, not just the day's total.
+        static let leetcodeEasySuffix = "easy_"
+        static let leetcodeMediumSuffix = "medium_"
+        static let leetcodeHardSuffix = "hard_"
+
         /// Last-known waive-off status, cached so the UI has something
         /// sane to show before the first successful fetch of a session
         /// and while offline.

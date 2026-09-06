@@ -12,53 +12,54 @@ struct ContentView: View {
     @State private var waiveOffAlertType: NetworkManager.WaiveOffType?
     @State private var waiveOffError: String?
     @State private var isClaiming = false
-
-    // MARK: Body
+    @State private var selectedTab: GoalTab = .steps
+    @State private var selectedPeriod: StatsPeriod = .week
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 12) {
-                    StepsCard(
-                        healthKit: healthKit,
-                        waived: network.waiveOffStatus?.stepsWaivedToday ?? false,
-                        waiveRemaining: network.waiveOffStatus?.stepsRemaining,
-                        onTapWaiveOff: { waiveOffAlertType = .steps }
-                    )
-                    GymCard(
-                        gymTracker: gymTracker,
-                        waived: network.waiveOffStatus?.gymWaivedToday ?? false,
-                        waiveRemaining: network.waiveOffStatus?.gymRemaining,
-                        onTapWaiveOff: { waiveOffAlertType = .gym }
-                    )
-                    LeetCodeCard(
-                        leetCode: leetCode,
-                        waived: network.waiveOffStatus?.leetcodeWaivedToday ?? false,
-                        waiveRemaining: network.waiveOffStatus?.leetcodeRemaining,
-                        onTapWaiveOff: { waiveOffAlertType = .leetcode }
-                    )
+            GeometryReader { geo in
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ActivityCard(
+                            selectedTab: $selectedTab,
+                            selectedPeriod: $selectedPeriod,
+                            healthKit: healthKit,
+                            gymTracker: gymTracker,
+                            leetCode: leetCode,
+                            waiveOffStatus: network.waiveOffStatus,
+                            onTapWaiveOff: { waiveOffAlertType = $0 }
+                        )
 
-                    GateHero(
-                        isOpen: network.isGateOpen,
-                        deviceOnline: network.connectionStatus == .online,
-                        errorMessage: networkErrorMessage,
-                        goalsFullyMet: network.goalsFullyMet,
-                        availableToClaimMinutes: network.availableToClaimMinutes,
-                        remainingMinutes: network.remainingMinutesToday,
-                        isClaiming: isClaiming,
-                        onClaim: { await claimCredit() }
-                    )
+                        GateHero(
+                            isOpen: network.isGateOpen,
+                            deviceOnline: network.connectionStatus == .online,
+                            errorMessage: networkErrorMessage,
+                            goalsFullyMet: network.goalsFullyMet,
+                            availableToClaimMinutes: network.availableToClaimMinutes,
+                            remainingMinutes: network.remainingMinutesToday,
+                            isClaiming: isClaiming,
+                            onClaim: { await claimCredit() }
+                        )
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    // Pins content to at least the full available height so
+                    // nothing scrolls during normal use — the two cards fill
+                    // the screen exactly like before. Wrapping in ScrollView
+                    // at all is only here so .refreshable has something to
+                    // attach to; a bare VStack can't support pull-to-refresh.
+                    // On a screen too short for both cards' minimum content,
+                    // this also degrades gracefully into an actual scroll
+                    // instead of clipping.
+                    .frame(minHeight: geo.size.height)
                 }
-                .padding(.horizontal, 10)
-                .padding(.top, 0)
-                .padding(.bottom, 0)
-            }
-            .scrollIndicators(.hidden)
-            .refreshable {
-                await withCheckedContinuation { continuation in
-                    Task {
-                        await refresh()
-                        continuation.resume()
+                .scrollIndicators(.hidden)
+                .refreshable {
+                    await withCheckedContinuation { continuation in
+                        Task {
+                            await refresh()
+                            continuation.resume()
+                        }
                     }
                 }
             }
