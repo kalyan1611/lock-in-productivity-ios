@@ -49,6 +49,15 @@ struct ActivityBarChart: View {
     /// way to see "did today clear target" at a glance. Defaults to true.
     var showTargetLine: Bool = true
 
+    /// Bar fills are drawn at reduced opacity vs. their source Palette
+    /// color. A saturated mint/green reads fine as a small badge or icon,
+    /// but as a filled bar covering real surface area against pure black
+    /// it dominates the screen — this tones it down without touching
+    /// Palette.open itself, which other UI (checkmarks, online pill, claim
+    /// button) still wants at full strength.
+    private let barFillOpacity: Double = 0.72
+    private let selectedBarFillOpacity: Double = 0.9
+
     private var maxValue: Double {
         max(entries.map(\.total).max() ?? 0, target, 1)
     }
@@ -68,9 +77,7 @@ struct ActivityBarChart: View {
         period == .month ? 2 : 4
     }
 
-    private var topLabelFontSize: CGFloat {
-        11
-    }
+    private var topLabelFontSize: CGFloat { 11 }
 
     /// Small fixed inset so bars don't touch the very edge of the chart's
     /// bounding box.
@@ -89,6 +96,13 @@ struct ActivityBarChart: View {
     private var reservedTopHeight: CGFloat {
         period == .month ? 4 : 16
     }
+
+    /// Minimum distance the target line must keep from the very top of the
+    /// bar area. Without this, a target close to the data's max value pushes
+    /// the line right up against that boundary — which in week view sits
+    /// flush under the per-bar total label — so the line visually collides
+    /// with the number instead of sitting clearly inside the bar area.
+    private let targetLineMinTopInset: CGFloat = 10
 
     /// Fraction of the way down from the top of the bar area the target
     /// line should sit — 0 at the very top (target == scale max), 1 at the
@@ -115,13 +129,22 @@ struct ActivityBarChart: View {
                     .frame(width: chartWidth, height: geo.size.height, alignment: .top)
 
                 if let fraction = targetLineFraction {
+                    // Clamp the raw fraction-based offset so the line always
+                    // keeps at least targetLineMinTopInset of clearance from
+                    // the top of the bar area, regardless of how close the
+                    // target sits to the current max value. Without this, a
+                    // near-max target pushes the line up into the per-bar
+                    // total label sitting just above the bar area.
+                    let rawOffset = fraction * barAreaHeight
+                    let clampedOffset = max(rawOffset, targetLineMinTopInset)
+
                     TargetLine()
                         .frame(width: chartWidth, height: 1)
                         // Top of the bar-area row is exactly reservedTopHeight
                         // + rowSpacing down from the top of the chart, since
                         // every row above it now has a fixed, known height —
                         // no Spacer-driven guesswork about where that lands.
-                        .offset(y: reservedTopHeight + rowSpacing + fraction * barAreaHeight)
+                        .offset(y: reservedTopHeight + rowSpacing + clampedOffset)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
@@ -164,6 +187,7 @@ struct ActivityBarChart: View {
 
     // MARK: - Top row (week only — total above each bar; fixed height always)
 
+    @ViewBuilder
     private func topRow(for entry: Entry) -> some View {
         Group {
             if period != .month, entry.total > 0 {
@@ -185,6 +209,10 @@ struct ActivityBarChart: View {
     private func stackedBar(entry: Entry, isSelected: Bool, maxHeight: CGFloat) -> some View {
         let met = entry.total >= target
         let isStacked = entry.segments.count > 1
+        // Selected bars get a touch more opacity than the resting state so
+        // the highlight reads as "brought forward," on top of the outline
+        // stroke below — not just the resting fill with a border added.
+        let fillOpacity = isSelected ? selectedBarFillOpacity : barFillOpacity
 
         Group {
             if entry.total <= 0 {
@@ -200,6 +228,7 @@ struct ActivityBarChart: View {
                         let heightFraction = segment.value / maxValue
                         Rectangle()
                             .fill(isStacked ? segment.color : (met ? Palette.open : Palette.started))
+                            .opacity(fillOpacity)
                             .frame(height: segment.value > 0 ? max(3, maxHeight * heightFraction) : 0)
                     }
                 }

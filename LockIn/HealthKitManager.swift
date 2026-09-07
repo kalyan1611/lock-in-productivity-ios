@@ -99,12 +99,18 @@ final class HealthKitManager: ObservableObject {
         healthStore.execute(query)
     }
 
+    /// Last `days` calendar days of step totals, ending on `endDate` (default: today).
+    /// `endDate` lets paged history views (ActivityCard's week/month pager) request
+    /// a window anchored anywhere in the past, not just the trailing 7/30 days.
     func fetchStepsHistory(days: Int, endingOn endDate: Date = Date()) async throws -> [(date: Date, steps: Int)] {
         let calendar = Calendar.current
         let referenceEnd = min(endDate, Date())
         guard let startDate = calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: referenceEnd)) else {
             return []
         }
+        // Widened by one day so the query captures the *full* final day
+        // (HealthKit statistics collection queries are start-inclusive,
+        // end-exclusive on the underlying sample window).
         let queryEnd = min(
             calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: referenceEnd)) ?? referenceEnd,
             Date()
@@ -132,7 +138,13 @@ final class HealthKitManager: ObservableObject {
                     let sum = stats.sumQuantity()?.doubleValue(for: .count()) ?? 0
                     daily.append((date: stats.startDate, steps: Int(sum)))
                 }
-                continuation.resume(returning: daily)
+                // enumerateStatistics can include one extra boundary bucket
+                // dated the day after the intended range (a side effect of
+                // queryEnd's +1-day widening above, needed to capture the
+                // full final day) — trim back to exactly `days` entries so
+                // it doesn't show up as a phantom empty day here and a
+                // duplicate real day on the next page.
+                continuation.resume(returning: Array(daily.prefix(days)))
             }
             healthStore.execute(query)
         }

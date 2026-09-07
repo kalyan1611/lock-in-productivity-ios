@@ -101,10 +101,13 @@ final class LeetCodeManager: ObservableObject {
         KeychainStore.setInt(hardTodayCount, forKey: hardKey(today))
     }
 
-    /// Last `days` calendar days of solved-problem totals, oldest first.
-    /// Days before this feature shipped (or before the user first opened
-    /// the app on a given day) simply read back 0 — there's no synthetic
-    /// backfill, so the chart honestly reflects what's actually known.
+    /// Last `days` calendar days of solved-problem totals, oldest first,
+    /// ending on `endDate` (default: today). Days before this feature
+    /// shipped (or before the user first opened the app on a given day)
+    /// simply read back 0 — there's no synthetic backfill, so the chart
+    /// honestly reflects what's actually known. `endDate` lets paged
+    /// history views (ActivityCard's week/month pager) request a window
+    /// anchored anywhere in the past, not just the trailing 7/30 days.
     func history(days: Int, endingOn endDate: Date = Date()) -> [(date: Date, count: Int)] {
         let calendar = Calendar.current
         var result: [(date: Date, count: Int)] = []
@@ -117,6 +120,8 @@ final class LeetCodeManager: ObservableObject {
         return result
     }
 
+    /// Same window as `history(days:endingOn:)`, but with the easy/medium/hard
+    /// split needed to render a stacked bar.
     func breakdownHistory(days: Int, endingOn endDate: Date = Date()) -> [DailyBreakdown] {
         let calendar = Calendar.current
         var result: [DailyBreakdown] = []

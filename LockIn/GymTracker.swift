@@ -323,8 +323,11 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         isGymSessionCompleted = seconds >= targetGymDurationSeconds
     }
 
-    /// Last `days` calendar days of gym seconds, oldest first, reading the
-    /// same date-keyed entries `loadTodayAccumulatedTime` already writes.
+    /// Last `days` calendar days of gym seconds, oldest first, ending on
+    /// `endDate` (default: today). Reads the same date-keyed entries
+    /// `loadTodayAccumulatedTime` already writes. `endDate` lets paged
+    /// history views (ActivityCard's week/month pager) request a window
+    /// anchored anywhere in the past, not just the trailing 7/30 days.
     func secondsHistory(days: Int, endingOn endDate: Date = Date()) -> [(date: Date, seconds: Double)] {
         let calendar = Calendar.current
         let formatter = DateFormatter()
