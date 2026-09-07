@@ -42,11 +42,15 @@ struct ActivityBarChart: View {
     /// Formats a raw value into display text, e.g. "6,743" or "45m".
     /// Used for the per-bar total shown above each bar in week view.
     let valueLabel: (Double) -> String
-    /// Whether to draw a dashed target-goal line. Steps and Gym use a
-    /// single green/blue bar color to show met-vs-short, so the line is
-    /// redundant there; LeetCode's bars are stacked easy/medium/hard
-    /// segments with no single met/short color, so the line is the only
-    /// way to see "did today clear target" at a glance. Defaults to true.
+    /// Whether to draw a dashed target-goal line. Only ever actually drawn
+    /// in month view (see `targetLineFraction`) — week view already shows
+    /// every bar's exact total via its per-bar label, so a line there is
+    /// both redundant and prone to visually colliding with that label
+    /// whenever a day's value sits close to target. Month has no per-bar
+    /// label to collide with, and no other way to see "did today clear
+    /// target" at a glance, so the line stays meaningful there. LeetCode's
+    /// stacked easy/medium/hard bars have no single met/short color, which
+    /// is why this defaults to true for LeetCode's caller.
     var showTargetLine: Bool = true
 
     /// Bar fills are drawn at reduced opacity vs. their source Palette
@@ -55,7 +59,7 @@ struct ActivityBarChart: View {
     /// it dominates the screen — this tones it down without touching
     /// Palette.open itself, which other UI (checkmarks, online pill, claim
     /// button) still wants at full strength.
-    private let barFillOpacity: Double = 0.85
+    private let barFillOpacity: Double = 0.72
     private let selectedBarFillOpacity: Double = 0.9
 
     private var maxValue: Double {
@@ -98,17 +102,19 @@ struct ActivityBarChart: View {
     }
 
     /// Minimum distance the target line must keep from the very top of the
-    /// bar area. Without this, a target close to the data's max value pushes
-    /// the line right up against that boundary — which in week view sits
-    /// flush under the per-bar total label — so the line visually collides
-    /// with the number instead of sitting clearly inside the bar area.
+    /// bar area, so it never sits flush against that boundary. Only
+    /// relevant in month view now — see `showTargetLine`.
     private let targetLineMinTopInset: CGFloat = 10
 
     /// Fraction of the way down from the top of the bar area the target
     /// line should sit — 0 at the very top (target == scale max), 1 at the
-    /// baseline. `nil` when there's nothing to draw.
+    /// baseline. `nil` when there's nothing to draw. Restricted to month
+    /// view: week view already shows each bar's exact total via its
+    /// per-bar label, and the line collides with that label whenever a
+    /// day's value sits close to target — the most common case where the
+    /// line would otherwise be drawn.
     private var targetLineFraction: CGFloat? {
-        guard showTargetLine, target > 0, maxValue > 0 else { return nil }
+        guard showTargetLine, period == .month, target > 0, maxValue > 0 else { return nil }
         let clamped = min(target / maxValue, 1)
         return CGFloat(1 - clamped)
     }
@@ -132,9 +138,7 @@ struct ActivityBarChart: View {
                     // Clamp the raw fraction-based offset so the line always
                     // keeps at least targetLineMinTopInset of clearance from
                     // the top of the bar area, regardless of how close the
-                    // target sits to the current max value. Without this, a
-                    // near-max target pushes the line up into the per-bar
-                    // total label sitting just above the bar area.
+                    // target sits to the current max value.
                     let rawOffset = fraction * barAreaHeight
                     let clampedOffset = max(rawOffset, targetLineMinTopInset)
 
