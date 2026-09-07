@@ -11,18 +11,41 @@ struct ActivityCard: View {
     let waiveOffStatus: NetworkManager.WaiveOffStatus?
     let onTapWaiveOff: (NetworkManager.WaiveOffType) -> Void
 
+    /// +1 when the most recent tab change moved rightward through
+    /// GoalTab.allCases (Steps → Gym → LeetCode), -1 when it moved
+    /// leftward. Drives which edge `tabTransition` slides in/out from.
+    /// Set synchronously alongside `selectedTab` itself (see
+    /// `GoalTabSwitcher.onSelect` below) so both land in the same
+    /// transaction — if this lagged a render behind, the very tab switch
+    /// it's meant to describe would animate with the previous direction.
+    @State private var tabDirection: Int = 1
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
 
-            GoalTabSwitcher(selection: $selectedTab)
+            GoalTabSwitcher(selection: $selectedTab) { old, new in
+                let oldIndex = GoalTab.allCases.firstIndex(of: old) ?? 0
+                let newIndex = GoalTab.allCases.firstIndex(of: new) ?? 0
+                tabDirection = newIndex >= oldIndex ? 1 : -1
+            }
 
             // .topLeading matters here — without an explicit alignment this
             // frame defaults to centering non-expanding content (that's why
             // today's stat was rendering centered before), pushing it away
             // from the card's top-left and leaving dead space below.
+            //
+            // `.id(selectedTab)` gives each tab's content its own view
+            // identity, which is what makes `.transition` fire at all —
+            // without it this is just one persistent view whose internals
+            // happen to change, and SwiftUI has nothing to insert/remove.
+            // `.clipped()` keeps the sliding content from poking outside
+            // the card's rounded corners mid-animation.
             tabContent
+                .id(selectedTab)
+                .transition(tabTransition)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .clipped()
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -45,6 +68,18 @@ struct ActivityCard: View {
         case .leetcode:
             leetCodeContent
         }
+    }
+
+    /// New content enters from the direction of travel and old content
+    /// exits the opposite way — a standard slide-page effect. Both sides
+    /// fade slightly too, which hides the fact that the three tabs'
+    /// content isn't the same height (a pure slide with mismatched
+    /// heights can look like it's "snagging" on the shorter view).
+    private var tabTransition: AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: tabDirection >= 0 ? .trailing : .leading).combined(with: .opacity),
+            removal: .move(edge: tabDirection >= 0 ? .leading : .trailing).combined(with: .opacity)
+        )
     }
 
     // MARK: - Header (title + ticket badge tied to selected tab)

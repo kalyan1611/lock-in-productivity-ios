@@ -31,12 +31,32 @@ enum StatsPeriod: String, CaseIterable {
 
 struct GoalTabSwitcher: View {
     @Binding var selection: GoalTab
+    /// Fires with (oldTab, newTab) whenever a tap actually changes the
+    /// selection. Callers that want a direction-aware content transition
+    /// (see ActivityCard) should set their direction state from inside
+    /// this closure — it's invoked from inside the same `withAnimation`
+    /// block as the `selection` write itself, so both land in one
+    /// transaction and the content transition sees the right direction on
+    /// its very first render instead of one frame late.
+    var onSelect: ((GoalTab, GoalTab) -> Void)? = nil
+
+    /// Shared id for the highlight capsule. Because only the currently
+    /// selected button inserts a capsule carrying this id, SwiftUI treats
+    /// it as the same view moving between buttons rather than one fading
+    /// out while another fades in — that's what makes the highlight slide
+    /// instead of crossfade.
+    @Namespace private var pillNamespace
 
     var body: some View {
         HStack(spacing: 4) {
             ForEach(GoalTab.allCases, id: \.self) { tab in
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { selection = tab }
+                    guard tab != selection else { return }
+                    let old = selection
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        onSelect?(old, tab)
+                        selection = tab
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: tab.icon)
@@ -47,7 +67,13 @@ struct GoalTabSwitcher: View {
                     .foregroundStyle(selection == tab ? Palette.background : Palette.textSecondary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 38)
-                    .background(Capsule().fill(selection == tab ? Palette.textPrimary : Color.clear))
+                    .background {
+                        if selection == tab {
+                            Capsule()
+                                .fill(Palette.textPrimary)
+                                .matchedGeometryEffect(id: "goalTabPill", in: pillNamespace)
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
             }
@@ -61,11 +87,15 @@ struct GoalTabSwitcher: View {
 struct PeriodSwitcher: View {
     @Binding var selection: StatsPeriod
 
+    @Namespace private var pillNamespace
+
     var body: some View {
         HStack(spacing: 4) {
             ForEach(StatsPeriod.allCases, id: \.self) { period in
                 Button {
-                    selection = period
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selection = period
+                    }
                 } label: {
                     Text(period.rawValue.uppercased())
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -73,7 +103,13 @@ struct PeriodSwitcher: View {
                         .foregroundStyle(selection == period ? Palette.background : Palette.textSecondary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(Capsule().fill(selection == period ? Palette.textPrimary : Color.clear))
+                        .background {
+                            if selection == period {
+                                Capsule()
+                                    .fill(Palette.textPrimary)
+                                    .matchedGeometryEffect(id: "periodPill", in: pillNamespace)
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
             }
