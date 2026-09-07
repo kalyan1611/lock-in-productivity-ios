@@ -105,11 +105,11 @@ final class LeetCodeManager: ObservableObject {
     /// Days before this feature shipped (or before the user first opened
     /// the app on a given day) simply read back 0 — there's no synthetic
     /// backfill, so the chart honestly reflects what's actually known.
-    func history(days: Int) -> [(date: Date, count: Int)] {
+    func history(days: Int, endingOn endDate: Date = Date()) -> [(date: Date, count: Int)] {
         let calendar = Calendar.current
         var result: [(date: Date, count: Int)] = []
         for offset in stride(from: days - 1, through: 0, by: -1) {
-            guard let day = calendar.date(byAdding: .day, value: -offset, to: Date()) else { continue }
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: endDate) else { continue }
             let key = dailyCountKeyPrefix + dateString(day)
             let count = KeychainStore.integer(forKey: key)
             result.append((date: calendar.startOfDay(for: day), count: count))
@@ -117,13 +117,11 @@ final class LeetCodeManager: ObservableObject {
         return result
     }
 
-    /// Same window as `history(days:)`, but with the easy/medium/hard split
-    /// needed to render a stacked bar.
-    func breakdownHistory(days: Int) -> [DailyBreakdown] {
+    func breakdownHistory(days: Int, endingOn endDate: Date = Date()) -> [DailyBreakdown] {
         let calendar = Calendar.current
         var result: [DailyBreakdown] = []
         for offset in stride(from: days - 1, through: 0, by: -1) {
-            guard let day = calendar.date(byAdding: .day, value: -offset, to: Date()) else { continue }
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: endDate) else { continue }
             result.append(DailyBreakdown(
                 date: calendar.startOfDay(for: day),
                 easy: KeychainStore.integer(forKey: easyKey(day)),

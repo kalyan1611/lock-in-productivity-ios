@@ -2,21 +2,28 @@ import SwiftUI
 
 struct ActivityCard: View {
     @Binding var selectedTab: GoalTab
+
     @Binding var selectedPeriod: StatsPeriod
 
     @ObservedObject var healthKit: HealthKitManager
+
     @ObservedObject var gymTracker: GymTracker
+
     @ObservedObject var leetCode: LeetCodeManager
 
     let waiveOffStatus: NetworkManager.WaiveOffStatus?
+
     let onTapWaiveOff: (NetworkManager.WaiveOffType) -> Void
 
-    /// Which month-view bar is currently tapped, if any. Lives here (not
-    /// inside ActivityBarChart) so a readable detail row can be rendered
-    /// above the chart, under the Week/Month switcher, instead of cramming
-    /// text onto a ~7pt-wide bar. Indices aren't meaningful across a tab or
-    /// period switch, so both reset it back to nil.
-    @State private var selectedBarIndex: Int?
+    // Which month-view bar is currently tapped, if any. Lives here (not
+
+    // inside ActivityBarChart) so a readable detail row can be rendered
+
+    // above the chart, under the Week/Month switcher, instead of cramming
+
+    // text onto a \~7pt-wide bar. Indices aren't meaningful across a tab or
+
+    // period switch, so both reset it back to nil.
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -25,32 +32,40 @@ struct ActivityCard: View {
             GoalTabSwitcher(selection: $selectedTab)
 
             // .topLeading matters here — without an explicit alignment this
+
             // frame defaults to centering non-expanding content (that's why
+
             // today's stat was rendering centered before), pushing it away
+
             // from the card's top-left and leaving dead space below.
+
             tabContent
+
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
+
                 .stroke(Palette.surfaceStroke, lineWidth: 1)
         )
-        .onChange(of: selectedTab) { _, _ in selectedBarIndex = nil }
-        .onChange(of: selectedPeriod) { _, _ in selectedBarIndex = nil }
     }
 
     // MARK: - Tab content dispatch
 
     @ViewBuilder
+
     private var tabContent: some View {
         switch selectedTab {
         case .steps:
             stepsContent
+
         case .gym:
             gymContent
+
         case .leetcode:
             leetCodeContent
         }
@@ -61,7 +76,9 @@ struct ActivityCard: View {
     private var isCompletedForTab: Bool {
         switch selectedTab {
         case .steps: healthKit.areTodaysStepsCompleted
+
         case .gym: gymTracker.isGymSessionCompleted
+
         case .leetcode: leetCode.isGoalMet
         }
     }
@@ -69,7 +86,9 @@ struct ActivityCard: View {
     private var waivedForTab: Bool {
         switch selectedTab {
         case .steps: waiveOffStatus?.stepsWaivedToday ?? false
+
         case .gym: waiveOffStatus?.gymWaivedToday ?? false
+
         case .leetcode: waiveOffStatus?.leetcodeWaivedToday ?? false
         }
     }
@@ -77,7 +96,9 @@ struct ActivityCard: View {
     private var waiveRemainingForTab: Int? {
         switch selectedTab {
         case .steps: waiveOffStatus?.stepsRemaining
+
         case .gym: waiveOffStatus?.gymRemaining
+
         case .leetcode: waiveOffStatus?.leetcodeRemaining
         }
     }
@@ -85,6 +106,7 @@ struct ActivityCard: View {
     private var header: some View {
         HStack {
             Text("ACTIVITY")
+
                 .font(Typography.eyebrow)
                 .tracking(1.5)
                 .foregroundStyle(Palette.textSecondary)
@@ -92,9 +114,13 @@ struct ActivityCard: View {
             Spacer()
 
             if !isCompletedForTab,
+
                !waivedForTab,
+
                TimeUtils.isFreeTime(),
+
                let remaining = waiveRemainingForTab
+
             {
                 TicketBadge(remaining: remaining) {
                     onTapWaiveOff(selectedTab.waiveOffType)
@@ -106,111 +132,161 @@ struct ActivityCard: View {
     // MARK: - Steps
 
     // stepsUntilNextChunk mirrors the firmware's STEPS_PER_CREDIT_CHUNK
+
     // (1000 steps = +10m, capped at the daily target) — kept in sync
+
     // manually with dns_filter.ino's tieredMinutesFromProgress(). Computed
+
     // locally from HealthKit data the app already has, rather than
+
     // round-tripping through the ESP32, so it's live rather than only as
+
     // fresh as the last /sync.
 
     private var stepsUntilNextChunk: Int? {
         let chunk = 1000
+
         let steps = healthKit.todaySteps
+
         let target = healthKit.targetSteps
+
         guard steps < target else { return nil }
+
         let nextThreshold = min(((steps / chunk) + 1) * chunk, target)
+
         let remaining = nextThreshold - steps
+
         return remaining > 0 ? remaining : nil
     }
 
-    private var stepsEntries: [ActivityBarChart.Entry] {
-        healthKit.stepsHistory.map { day in
-            let met = healthKit.targetSteps > 0
-                ? Double(day.steps) >= Double(healthKit.targetSteps) : false
+    private func stepsEntries(forPage page: Int) async -> [ActivityBarChart.Entry] {
+        let history = await (try? healthKit.fetchStepsHistory(days: daysPerPeriod, endingOn: referenceDate(forPage: page))) ?? []
+
+        return history.map { day in
+            let met = healthKit.targetSteps > 0 ? Double(day.steps) >= Double(healthKit.targetSteps) : false
+
             return ActivityBarChart.Entry(
                 date: day.date,
-                segments: [
-                    ActivityBarChart.Segment(
-                        value: Double(day.steps),
-                        color: met ? Palette.open : Palette.started
-                    ),
-                ]
+
+                segments: [ActivityBarChart.Segment(value: Double(day.steps), color: met ? Palette.open : Palette.started)]
             )
         }
     }
 
-    @ViewBuilder
-    private var stepsSelectedDetail: some View {
-        if selectedPeriod == .month, let index = selectedBarIndex, stepsEntries.indices.contains(index) {
-            let entry = stepsEntries[index]
-            SelectedBarDetail(
-                dateText: fullDateLabel(entry.date),
-                totalText: "\(Int(entry.total))",
-                unitText: "steps",
-                totalColor: entry.total >= Double(healthKit.targetSteps) ? Palette.open : Palette.textPrimary,
-                breakdown: []
-            )
+    private var daysPerPeriod: Int {
+        selectedPeriod == .week ? 7 : 30
+    }
+
+    private var totalPages: Int {
+        selectedPeriod == .week ? 8 : 6
+    }
+
+    private func referenceDate(forPage page: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: -(daysPerPeriod * page), to: Date()) ?? Date()
+    }
+
+    private func periodRangeLabel(forPage page: Int) -> String {
+        let calendar = Calendar.current
+
+        let end = referenceDate(forPage: page)
+
+        let start = calendar.date(byAdding: .day, value: -(daysPerPeriod - 1), to: end) ?? end
+
+        let formatter = DateFormatter()
+
+        formatter.dateFormat = "MMM d"
+
+        let startText = formatter.string(from: start)
+
+        let endText = page == 0 ? "Today" : formatter.string(from: end)
+
+        return "\(startText) – \(endText)"
+    }
+
+    private func pageSubtitle(forPage page: Int) -> String {
+        let unit = selectedPeriod == .week ? "week" : "month"
+
+        if page == 0 {
+            return "This \(unit)"
         }
+
+        return "\(page) \(unit)\(page > 1 ? "s" : "") ago"
     }
 
     private var stepsContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             todayStat(
                 value: "\(healthKit.todaySteps)",
+
                 unit: "of \(healthKit.targetSteps) steps",
+
                 progress: healthKit.targetSteps > 0
+
                     ? Double(healthKit.todaySteps) / Double(healthKit.targetSteps) : 0,
+
                 isCompleted: healthKit.areTodaysStepsCompleted,
+
                 waived: waiveOffStatus?.stepsWaivedToday ?? false,
+
                 creditNote: stepsUntilNextChunk.map { "\($0) to next +10m" }
             )
-            .frame(maxWidth: .infinity, alignment: .leading)
-            PeriodSwitcher(selection: $selectedPeriod)
-            stepsSelectedDetail
 
-            ActivityBarChart(
-                entries: stepsEntries,
-                target: Double(healthKit.targetSteps),
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Divider().overlay(Palette.surfaceStroke)
+
+            PeriodSwitcher(selection: $selectedPeriod)
+
+            PagedActivityChart(
+                totalPages: totalPages,
+
                 period: selectedPeriod,
-                selectedIndex: $selectedBarIndex,
+
+                target: Double(healthKit.targetSteps),
+
                 valueLabel: { "\(Int($0))" },
-                showTargetLine: false
+
+                showTargetLine: false,
+
+                rangeLabel: { periodRangeLabel(forPage: $0) },
+
+                subtitle: { pageSubtitle(forPage: $0) },
+
+                fetchEntries: { await stepsEntries(forPage: $0) },
+
+                detailFor: { entry in
+                    SelectedBarDetail(
+                        dateText: fullDateLabel(entry.date),
+
+                        totalText: "\(Int(entry.total))",
+
+                        unitText: "steps",
+
+                        totalColor: entry.total >= Double(healthKit.targetSteps) ? Palette.open : Palette.textPrimary,
+
+                        breakdown: []
+                    )
+                }
             )
+
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .task(id: selectedPeriod) {
-                await healthKit.syncStepsHistory(days: selectedPeriod == .week ? 7 : 30)
-            }
         }
     }
 
     // MARK: - Gym
 
-    private var gymEntries: [ActivityBarChart.Entry] {
-        let history = gymTracker.secondsHistory(days: selectedPeriod == .week ? 7 : 30)
+    private func gymEntries(forPage page: Int) async -> [ActivityBarChart.Entry] {
+        let history = gymTracker.secondsHistory(days: daysPerPeriod, endingOn: referenceDate(forPage: page))
+
         return history.map { day in
             let minutes = day.seconds / 60
+
             let met = minutes >= Double(gymTracker.targetGymDurationMinutes)
+
             return ActivityBarChart.Entry(
                 date: day.date,
-                segments: [
-                    ActivityBarChart.Segment(
-                        value: minutes,
-                        color: met ? Palette.open : Palette.started
-                    ),
-                ]
-            )
-        }
-    }
 
-    @ViewBuilder
-    private var gymSelectedDetail: some View {
-        if selectedPeriod == .month, let index = selectedBarIndex, gymEntries.indices.contains(index) {
-            let entry = gymEntries[index]
-            SelectedBarDetail(
-                dateText: fullDateLabel(entry.date),
-                totalText: "\(Int(entry.total))",
-                unitText: "min",
-                totalColor: entry.total >= Double(gymTracker.targetGymDurationMinutes) ? Palette.open : Palette.textPrimary,
-                breakdown: []
+                segments: [ActivityBarChart.Segment(value: minutes, color: met ? Palette.open : Palette.started)]
             )
         }
     }
@@ -219,49 +295,90 @@ struct ActivityCard: View {
         VStack(alignment: .leading, spacing: 16) {
             todayStat(
                 value: "\(Int(gymTracker.totalSecondsToday) / 60) min",
+
                 unit: "of \(gymTracker.targetGymDurationMinutes) min target",
+
                 progress: gymTracker.targetGymDurationSeconds > 0
+
                     ? gymTracker.totalSecondsToday / gymTracker.targetGymDurationSeconds : 0,
+
                 isCompleted: gymTracker.isGymSessionCompleted,
+
                 waived: waiveOffStatus?.gymWaivedToday ?? false,
+
                 creditNote: gymTracker.isGymSessionCompleted ? nil : "Full session: +\(gymTracker.targetGymDurationMinutes)m"
             )
+
             .frame(maxWidth: .infinity, alignment: .leading)
 
             gymActionButton
-            PeriodSwitcher(selection: $selectedPeriod)
-            gymSelectedDetail
 
-            ActivityBarChart(
-                entries: gymEntries,
-                target: Double(gymTracker.targetGymDurationMinutes),
+            Divider().overlay(Palette.surfaceStroke)
+
+            PeriodSwitcher(selection: $selectedPeriod)
+
+            PagedActivityChart(
+                totalPages: totalPages,
+
                 period: selectedPeriod,
-                selectedIndex: $selectedBarIndex,
+
+                target: Double(gymTracker.targetGymDurationMinutes),
+
                 valueLabel: { "\(Int($0))m" },
-                showTargetLine: false
+
+                showTargetLine: false,
+
+                rangeLabel: { periodRangeLabel(forPage: $0) },
+
+                subtitle: { pageSubtitle(forPage: $0) },
+
+                fetchEntries: { await gymEntries(forPage: $0) },
+
+                detailFor: { entry in
+                    SelectedBarDetail(
+                        dateText: fullDateLabel(entry.date),
+
+                        totalText: "\(Int(entry.total))",
+
+                        unitText: "min",
+
+                        totalColor: entry.total >= Double(gymTracker.targetGymDurationMinutes) ? Palette.open : Palette.textPrimary,
+
+                        breakdown: []
+                    )
+                }
             )
+
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     // gymGuidanceLabel restores the pre-revamp "Inside gym zone" / distance
+
     // / "Location unknown" row, and workoutDurationText restores the
+
     // post-checkout "Workout duration: N mins" line — both were dropped
+
     // when this moved from the standalone GymCard into ActivityCard.
 
     @ViewBuilder
+
     private var gymActionButton: some View {
         if gymTracker.isCheckedIn, let checkInDate = gymTracker.checkInDate {
             VStack(spacing: 10) {
                 GymCountdownButton(gymTracker: gymTracker, checkInDate: checkInDate)
+
                 gymGuidanceLabel
             }
+
         } else if gymTracker.hasCheckedOutToday {
             VStack(spacing: 10) {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
+
                     Text("Session complete")
                 }
+
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Palette.open)
                 .frame(maxWidth: .infinity)
@@ -269,22 +386,28 @@ struct ActivityCard: View {
                 .background(Capsule().fill(Palette.open.opacity(0.12)))
 
                 Text(workoutDurationText)
+
                     .font(.caption2)
                     .foregroundStyle(Palette.textSecondary)
             }
+
         } else {
             VStack(spacing: 10) {
                 Button {
                     gymTracker.checkIn()
+
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "figure.strengthtraining.traditional")
+
                         Text("Check In")
                     }
+
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .frame(height: 46)
                 }
+
                 .buttonStyle(.plain)
                 .foregroundStyle(gymTracker.isInsideGeofence ? Palette.background : Palette.textSecondary)
                 .background(Capsule().fill(gymTracker.isInsideGeofence ? Palette.open : Palette.surfaceStroke))
@@ -299,27 +422,35 @@ struct ActivityCard: View {
         Group {
             if gymTracker.isInsideGeofence {
                 gymGuidanceRow(icon: "location.fill", text: "Inside gym zone", tint: Palette.open)
+
             } else if gymTracker.distanceToGym != nil {
                 gymGuidanceRow(icon: "location", text: formattedDistance, tint: Palette.textSecondary)
+
             } else {
                 gymGuidanceRow(icon: "location.slash", text: "Location unknown", tint: Palette.textSecondary)
             }
         }
+
         .font(.caption2)
     }
 
     private func gymGuidanceRow(icon: String, text: String, tint: Color) -> some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
+
             Text(text)
         }
+
         .foregroundStyle(tint)
     }
 
     private var formattedDistance: String {
         guard let distance = gymTracker.distanceToGym else { return "" }
+
         return distance >= 1000
+
             ? String(format: "%.1f km away", distance / 1000)
+
             : String(format: "%.0f m away", distance)
     }
 
@@ -327,44 +458,36 @@ struct ActivityCard: View {
         guard let inTime = gymTracker.lastCheckInDate, let outTime = gymTracker.lastCheckOutDate else {
             return "Workout logged for today"
         }
+
         let minutes = Int(outTime.timeIntervalSince(inTime) / 60)
+
         return "Workout duration: \(minutes) mins"
     }
 
     // MARK: - LeetCode
 
     // Chart is backed by locally-cached daily easy/medium/hard totals (see
+
     // LeetCodeManager.breakdownHistory) since the public API only exposes a
+
     // rolling recent-submissions list, not backdated calendar data. Bars
+
     // render as a stack of easy/medium/hard segments, color-matched to the
+
     // difficultyBreakdown row above the chart.
 
-    private var leetCodeEntries: [ActivityBarChart.Entry] {
-        let breakdown = leetCode.breakdownHistory(days: selectedPeriod == .week ? 7 : 30)
+    private func leetCodeEntries(forPage page: Int) async -> [ActivityBarChart.Entry] {
+        let breakdown = leetCode.breakdownHistory(days: daysPerPeriod, endingOn: referenceDate(forPage: page))
+
         return breakdown.map { day in
             ActivityBarChart.Entry(date: day.date, segments: [
                 ActivityBarChart.Segment(value: Double(day.easy), color: Palette.open),
-                ActivityBarChart.Segment(value: Double(day.medium), color: Palette.waived),
-                ActivityBarChart.Segment(value: Double(day.hard), color: Palette.locked),
-            ])
-        }
-    }
 
-    @ViewBuilder
-    private var leetCodeSelectedDetail: some View {
-        if selectedPeriod == .month, let index = selectedBarIndex, leetCodeEntries.indices.contains(index) {
-            let entry = leetCodeEntries[index]
-            SelectedBarDetail(
-                dateText: fullDateLabel(entry.date),
-                totalText: "\(Int(entry.total))",
-                unitText: "solved",
-                totalColor: entry.total >= Double(leetCode.targetProblems) ? Palette.open : Palette.textPrimary,
-                breakdown: [
-                    (label: "EASY", value: "\(Int(entry.segments[0].value))", color: Palette.open),
-                    (label: "MEDIUM", value: "\(Int(entry.segments[1].value))", color: Palette.waived),
-                    (label: "HARD", value: "\(Int(entry.segments[2].value))", color: Palette.locked),
-                ]
-            )
+                ActivityBarChart.Segment(value: Double(day.medium), color: Palette.waived),
+
+                ActivityBarChart.Segment(value: Double(day.hard), color: Palette.locked),
+
+            ])
         }
     }
 
@@ -372,28 +495,65 @@ struct ActivityCard: View {
         VStack(alignment: .leading, spacing: 16) {
             todayStat(
                 value: "\(leetCode.totalTodayCount)",
+
                 unit: "of \(leetCode.targetProblems) problems",
+
                 progress: leetCode.progress,
+
                 isCompleted: leetCode.isGoalMet,
+
                 waived: waiveOffStatus?.leetcodeWaivedToday ?? false
             )
+
             .frame(maxWidth: .infinity, alignment: .leading)
 
             difficultyBreakdown
-            PeriodSwitcher(selection: $selectedPeriod)
-            leetCodeSelectedDetail
 
-            ActivityBarChart(
-                entries: leetCodeEntries,
-                target: Double(leetCode.targetProblems),
+            Divider().overlay(Palette.surfaceStroke)
+
+            PeriodSwitcher(selection: $selectedPeriod)
+
+            PagedActivityChart(
+                totalPages: totalPages,
+
                 period: selectedPeriod,
-                selectedIndex: $selectedBarIndex,
-                valueLabel: { "\(Int($0))" }
+
+                target: Double(leetCode.targetProblems),
+
+                valueLabel: { "\(Int($0))" },
+
+                rangeLabel: { periodRangeLabel(forPage: $0) },
+
+                subtitle: { pageSubtitle(forPage: $0) },
+
+                fetchEntries: { await leetCodeEntries(forPage: $0) },
+
+                detailFor: { entry in
+                    SelectedBarDetail(
+                        dateText: fullDateLabel(entry.date),
+
+                        totalText: "\(Int(entry.total))",
+
+                        unitText: "solved",
+
+                        totalColor: entry.total >= Double(leetCode.targetProblems) ? Palette.open : Palette.textPrimary,
+
+                        breakdown: [
+                            (label: "EASY", value: "\(Int(entry.segments[0].value))", color: Palette.open),
+
+                            (label: "MEDIUM", value: "\(Int(entry.segments[1].value))", color: Palette.waived),
+
+                            (label: "HARD", value: "\(Int(entry.segments[2].value))", color: Palette.locked),
+                        ]
+                    )
+                }
             )
+
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if !leetCode.hasMultiDayHistory() {
                 Text("History builds day by day from today — full backdated history needs LeetCode's calendar API.")
+
                     .font(.caption2)
                     .foregroundStyle(Palette.textTertiary)
             }
@@ -403,9 +563,13 @@ struct ActivityCard: View {
     private var difficultyBreakdown: some View {
         HStack(spacing: 0) {
             difficultyColumn(label: "EASY", count: leetCode.easyTodayCount, creditLabel: "+5m", color: Palette.open)
+
             Divider().overlay(Palette.surfaceStroke).frame(height: 20)
+
             difficultyColumn(label: "MEDIUM", count: leetCode.mediumTodayCount, creditLabel: "+10m", color: Palette.waived)
+
             Divider().overlay(Palette.surfaceStroke).frame(height: 20)
+
             difficultyColumn(label: "HARD", count: leetCode.hardTodayCount, creditLabel: "+15m", color: Palette.locked)
         }
     }
@@ -413,48 +577,71 @@ struct ActivityCard: View {
     private func difficultyColumn(label: String, count: Int, creditLabel: String, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(label)
+
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(color)
+
             Text("\(count)")
+
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(Palette.textPrimary)
+
             Text(creditLabel)
+
                 .font(.system(size: 9))
                 .foregroundStyle(Palette.textSecondary)
         }
+
         .frame(maxWidth: .infinity)
     }
 
     // MARK: - Shared "today" stat block
 
     // Horizontal progress bar replaces the old ring+icon combo — the icon
+
     // duplicated what GoalTabSwitcher already shows, so it's dropped
+
     // entirely rather than relocated. creditNote restores the per-tab
+
     // "what do I earn" line that existed pre-revamp (StepsCard's chunked
+
     // "+10m per 1000 steps", GymCard's flat "Full session: +45m").
 
-    /// "Wed, Feb 12" — used by each tab's SelectedBarDetail row.
+    // "Wed, Feb 12" — used by each tab's SelectedBarDetail row.
+
     private func fullDateLabel(_ date: Date) -> String {
         let formatter = DateFormatter()
+
         formatter.dateFormat = "EEE, MMM d"
+
         return formatter.string(from: date)
     }
 
     private func todayStat(
         value: String,
+
         unit: String,
+
         progress: Double,
+
         isCompleted: Bool,
+
         waived: Bool,
+
         creditNote: String? = nil
+
     ) -> some View {
         let color = GoalColor.forProgress(progress, isCompleted: isCompleted, waived: waived)
+
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(value)
+
                     .font(Typography.display(28))
                     .foregroundStyle(Palette.textPrimary)
+
                 Text(unit)
+
                     .font(.caption)
                     .foregroundStyle(Palette.textSecondary)
             }
@@ -462,16 +649,21 @@ struct ActivityCard: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
+
                         .fill(Palette.surfaceStroke)
+
                     Capsule()
+
                         .fill(color)
                         .frame(width: geo.size.width * min(max(progress, 0), 1))
                 }
             }
+
             .frame(height: 8)
 
             if let creditNote {
                 Text(creditNote)
+
                     .font(.caption2)
                     .foregroundStyle(Palette.neutral)
             }
@@ -481,15 +673,23 @@ struct ActivityCard: View {
 
 // MARK: - Gym Countdown Button
 
-/// Pulled out of ActivityCard's gymActionButton if/else chain on purpose:
-/// TimelineView is a heavily generic type, and mixing it directly into a
-/// multi-branch @ViewBuilder if/else caused a "Generic parameter 'Content'
-/// could not be inferred" error. Isolating it in its own view, and further
-/// isolating the button-building work into a plain method with a small
-/// number of let bindings, keeps each piece simple enough for the type
-/// checker to resolve.
+// Pulled out of ActivityCard's gymActionButton if/else chain on purpose:
+
+// TimelineView is a heavily generic type, and mixing it directly into a
+
+// multi-branch @ViewBuilder if/else caused a "Generic parameter 'Content'
+
+// could not be inferred" error. Isolating it in its own view, and further
+
+// isolating the button-building work into a plain method with a small
+
+// number of let bindings, keeps each piece simple enough for the type
+
+// checker to resolve.
+
 private struct GymCountdownButton: View {
     @ObservedObject var gymTracker: GymTracker
+
     let checkInDate: Date
 
     var body: some View {
@@ -500,23 +700,32 @@ private struct GymCountdownButton: View {
 
     private func countdownButton(at now: Date) -> some View {
         let elapsed = now.timeIntervalSince(checkInDate)
+
         let canCheckOut = elapsed >= gymTracker.targetGymDurationSeconds
+
         let readyToCheckOut = canCheckOut && gymTracker.isInsideGeofence
+
         let remaining = max(gymTracker.targetGymDurationSeconds - elapsed, 0)
+
         let label = canCheckOut ? "Check Out" : timeString(from: remaining)
+
         let icon = canCheckOut ? "figure.walk.departure" : "timer"
 
         return Button {
             gymTracker.checkOut()
+
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: icon)
+
                 Text(label).monospacedDigit()
             }
+
             .font(.subheadline.weight(.semibold))
             .frame(maxWidth: .infinity)
             .frame(height: 46)
         }
+
         .buttonStyle(.plain)
         .foregroundStyle(readyToCheckOut ? Palette.background : Palette.textSecondary)
         .background(Capsule().fill(readyToCheckOut ? Palette.open : Palette.surfaceStroke))
@@ -525,8 +734,11 @@ private struct GymCountdownButton: View {
 
     private func timeString(from seconds: TimeInterval) -> String {
         let total = max(Int(seconds), 0)
+
         let minutes = total / 60
+
         let secs = total % 60
+
         return String(format: "%02d:%02d", minutes, secs)
     }
 }
@@ -537,32 +749,47 @@ private struct GymCountdownButton: View {
 
 // MARK: - Selected Bar Detail
 
-/// Readable stand-in for the per-bar label month view can't fit. Rendered
-/// between the Week/Month switcher and the chart itself whenever a month
-/// bar is tapped, so there's a full-width row of room instead of squeezing
-/// text above a ~7pt-wide bar.
+// Readable stand-in for the per-bar label month view can't fit. Rendered
+
+// between the Week/Month switcher and the chart itself whenever a month
+
+// bar is tapped, so there's a full-width row of room instead of squeezing
+
+// text above a \~7pt-wide bar.
+
 private struct SelectedBarDetail: View {
     let dateText: String
+
     let totalText: String
+
     let unitText: String
+
     let totalColor: Color
-    /// Per-segment rows (e.g. Easy/Medium/Hard). Empty for single-value
-    /// charts (Steps, Gym), which just show the date + total.
+
+    // Per-segment rows (e.g. Easy/Medium/Hard). Empty for single-value
+
+    // charts (Steps, Gym), which just show the date + total.
+
     let breakdown: [(label: String, value: String, color: Color)]
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(dateText)
+
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .tracking(0.6)
                     .foregroundStyle(Palette.textSecondary)
+
                 HStack(alignment: .firstTextBaseline, spacing: 5) {
                     Text(totalText)
+
                         .font(Typography.display(22))
                         .foregroundStyle(totalColor)
                         .contentTransition(.numericText())
+
                     Text(unitText)
+
                         .font(.caption)
                         .foregroundStyle(Palette.textSecondary)
                 }
@@ -576,10 +803,12 @@ private struct SelectedBarDetail: View {
                         VStack(spacing: 3) {
                             HStack(spacing: 4) {
                                 Circle().fill(item.color).frame(width: 6, height: 6)
+
                                 Text(item.label)
                                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                                     .foregroundStyle(Palette.textSecondary)
                             }
+
                             Text(item.value)
                                 .font(.subheadline.weight(.bold))
                                 .foregroundStyle(Palette.textPrimary)
@@ -588,14 +817,220 @@ private struct SelectedBarDetail: View {
                 }
             }
         }
+
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Palette.surfaceRaised, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
+
                 .stroke(Palette.surfaceStroke, lineWidth: 1)
         )
+
         .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+}
+
+// MARK: - Paged Activity Chart
+
+/// Wraps ActivityBarChart in a horizontally-swipeable TabView so the user
+/// can page back through past weeks/months, not just see the current one.
+///
+/// Pages are ordered newest → oldest:
+///     This week  ← swipe left →  Last week  ← swipe left →  2 weeks ago
+///
+/// Empty historical periods are excluded entirely, so the user cannot swipe
+/// into a page that contains no activity data.
+///
+/// Owns its own page index + per-page entry cache + tapped-bar state.
+private struct PagedActivityChart: View {
+    let totalPages: Int
+    let period: StatsPeriod
+    let target: Double
+    let valueLabel: (Double) -> String
+    var showTargetLine: Bool = true
+
+    /// "Aug 31 – Today" / "Aug 24 – Aug 30" etc.
+    let rangeLabel: (Int) -> String
+
+    /// "This week" / "2 weeks ago" etc.
+    let subtitle: (Int) -> String
+
+    let fetchEntries: (Int) async -> [ActivityBarChart.Entry]
+    let detailFor: (ActivityBarChart.Entry) -> SelectedBarDetail
+
+    /// Logical page numbers that actually contain data.
+    ///
+    /// 0 = current period
+    /// 1 = previous period
+    /// 2 = two periods ago
+    @State private var availablePages: [Int] = [0]
+
+    /// UI index into availablePages.
+    ///
+    /// Starts at the newest period. Swiping left moves toward older data.
+    @State private var displayIndex: Int = 0
+
+    @State private var selectedBarIndex: Int?
+
+    /// Cached entries keyed by logical page number.
+    @State private var cache: [Int: [ActivityBarChart.Entry]] = [:]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            header
+
+            if let logicalPage = currentLogicalPage,
+               period == .month,
+               let entries = cache[logicalPage],
+               let index = selectedBarIndex,
+               entries.indices.contains(index)
+            {
+                detailFor(entries[index])
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            TabView(selection: $displayIndex) {
+                ForEach(Array(availablePages.enumerated()), id: \.offset) { displayIndex, logicalPage in
+                    ActivityBarChart(
+                        entries: cache[logicalPage] ?? [],
+                        target: target,
+                        period: period,
+                        selectedIndex: barSelection(
+                            for: displayIndex,
+                            logicalPage: logicalPage
+                        ),
+                        valueLabel: valueLabel,
+                        showTargetLine: showTargetLine
+                    )
+                    .tag(displayIndex)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .animation(.easeInOut(duration: 0.2), value: selectedBarIndex)
+        .task(id: period) {
+            await loadPages()
+        }
+        .onChange(of: displayIndex) { _, _ in
+            selectedBarIndex = nil
+        }
+    }
+
+    // MARK: - Current Page
+
+    private var currentLogicalPage: Int? {
+        guard availablePages.indices.contains(displayIndex) else {
+            return nil
+        }
+
+        return availablePages[displayIndex]
+    }
+
+    // MARK: - Load Pages
+
+    /// Loads all possible historical periods and keeps only periods that
+    /// actually contain activity data.
+    ///
+    /// This is intentionally done once when the period changes rather than
+    /// waiting until the user swipes into an unknown page. That lets us
+    /// completely remove empty pages from the TabView.
+    private func loadPages() async {
+        // Reset everything for the newly selected period.
+        cache = [:]
+        availablePages = [0]
+        displayIndex = 0
+        selectedBarIndex = nil
+
+        var loadedPages: [Int: [ActivityBarChart.Entry]] = [:]
+
+        for page in 0 ..< totalPages {
+            guard !Task.isCancelled else {
+                return
+            }
+
+            let entries = await fetchEntries(page)
+
+            if !entries.isEmpty {
+                loadedPages[page] = entries
+            }
+        }
+
+        guard !Task.isCancelled else {
+            return
+        }
+
+        cache = loadedPages
+
+        // Pages remain ordered newest → oldest:
+        //
+        // n - 1 = current period
+        // n - 2 = previous period
+        // n - 2 = two periods ago
+        //
+        // Empty periods are removed.
+        availablePages = loadedPages.keys.sorted().reversed()
+
+        // Keep the TabView structurally valid if there is no data at all.
+        if availablePages.isEmpty {
+            availablePages = [0]
+        }
+
+        displayIndex = availablePages.count - 1
+        selectedBarIndex = nil
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                if let logicalPage = currentLogicalPage {
+                    Text(rangeLabel(logicalPage))
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .tracking(0.4)
+                        .foregroundStyle(Palette.textPrimary)
+
+                    Text(subtitle(logicalPage))
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Palette.textTertiary)
+                }
+            }
+
+            Spacer()
+
+            if availablePages.count > 1 {
+                Text("SWIPE FOR MORE")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .tracking(0.8)
+                    .foregroundStyle(Palette.textTertiary)
+            }
+        }
+    }
+
+    // MARK: - Bar Selection
+
+    /// ActivityBarChart wants a plain Binding<Int?>, while the actual selection
+    /// belongs to whichever logical page is currently visible.
+    private func barSelection(
+        for displayIndex: Int,
+        logicalPage _: Int
+    ) -> Binding<Int?> {
+        Binding(
+            get: {
+                self.displayIndex == displayIndex
+                    ? selectedBarIndex
+                    : nil
+            },
+            set: { newValue in
+                guard self.displayIndex == displayIndex else {
+                    return
+                }
+
+                selectedBarIndex = newValue
+            }
+        )
     }
 }

@@ -68,7 +68,9 @@ struct ActivityBarChart: View {
         period == .month ? 2 : 4
     }
 
-    private var topLabelFontSize: CGFloat { 11 }
+    private var topLabelFontSize: CGFloat {
+        11
+    }
 
     /// Small fixed inset so bars don't touch the very edge of the chart's
     /// bounding box.
@@ -162,7 +164,6 @@ struct ActivityBarChart: View {
 
     // MARK: - Top row (week only — total above each bar; fixed height always)
 
-    @ViewBuilder
     private func topRow(for entry: Entry) -> some View {
         Group {
             if period != .month, entry.total > 0 {

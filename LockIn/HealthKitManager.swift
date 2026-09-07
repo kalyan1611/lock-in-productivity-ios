@@ -99,14 +99,18 @@ final class HealthKitManager: ObservableObject {
         healthStore.execute(query)
     }
 
-    func fetchStepsHistory(days: Int) async throws -> [(date: Date, steps: Int)] {
+    func fetchStepsHistory(days: Int, endingOn endDate: Date = Date()) async throws -> [(date: Date, steps: Int)] {
         let calendar = Calendar.current
-        let now = Date()
-        guard let startDate = calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now)) else {
+        let referenceEnd = min(endDate, Date())
+        guard let startDate = calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: referenceEnd)) else {
             return []
         }
+        let queryEnd = min(
+            calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: referenceEnd)) ?? referenceEnd,
+            Date()
+        )
 
-        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: now, options: .strictStartDate)
+        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: queryEnd, options: .strictStartDate)
         var interval = DateComponents()
         interval.day = 1
 
@@ -124,7 +128,7 @@ final class HealthKitManager: ObservableObject {
                     return
                 }
                 var daily: [(date: Date, steps: Int)] = []
-                results?.enumerateStatistics(from: startDate, to: now) { stats, _ in
+                results?.enumerateStatistics(from: startDate, to: queryEnd) { stats, _ in
                     let sum = stats.sumQuantity()?.doubleValue(for: .count()) ?? 0
                     daily.append((date: stats.startDate, steps: Int(sum)))
                 }
