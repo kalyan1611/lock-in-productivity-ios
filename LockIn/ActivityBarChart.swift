@@ -55,7 +55,7 @@ struct ActivityBarChart: View {
     /// it dominates the screen — this tones it down without touching
     /// Palette.open itself, which other UI (checkmarks, online pill, claim
     /// button) still wants at full strength.
-    private let barFillOpacity: Double = 0.72
+    private let barFillOpacity: Double = 0.85
     private let selectedBarFillOpacity: Double = 0.9
 
     private var maxValue: Double {
