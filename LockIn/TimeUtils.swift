@@ -3,24 +3,34 @@ import SwiftUI
 // MARK: - Time Utilities
 
 enum TimeUtils {
+    
     private static let freeStartHour = 8
     private static let freeEndHour = 23
 
     static func isFreeTime(for date: Date = Date(), calendar: Calendar = .current) -> Bool {
-        let weekday = calendar.component(.weekday, from: date)
-        let isWeekend = (weekday == 1 || weekday == 7) // 1 = Sunday, 7 = Saturday
+        let weekday = calendar.component(.weekday, from: date) // 1 = Sun ... 7 = Sat
+        let hour = calendar.component(.hour, from: date)
 
-        if isWeekend {
+        switch weekday {
+        case 7: // Saturday — fully inside the weekend window, always free
             return true
+        case 6: // Friday — normal open, then rolls straight into the weekend
+            return hour >= freeStartHour
+        case 1: // Sunday — weekend window continues until freeEndHour
+            return hour < freeEndHour
+        default: // Monday - Thursday: standard daily window
+            return hour >= freeStartHour && hour < freeEndHour
         }
-
-        let currentHour = calendar.component(.hour, from: date)
-        return currentHour >= freeStartHour && currentHour < freeEndHour
     }
 
     /// The next moment `isFreeTime` will become true again. Returns nil if
-    /// we're already in free time (weekends are always free; weekdays are
-    /// free 8 AM–11 PM).
+    /// we're already in free time.
+    ///
+    /// Every "not free" moment is either before today's freeStartHour, or
+    /// at/after today's freeEndHour — the weekend window never leaves a
+    /// "not free" gap of its own (Sat/Sun mornings and Fri evenings are
+    /// already free), so both branches below can safely assume they're
+    /// dealing with an ordinary Mon-Fri lockout.
     static func nextFreeTime(from date: Date = Date(), calendar: Calendar = .current) -> Date? {
         guard !isFreeTime(for: date, calendar: calendar) else { return nil }
 
@@ -31,22 +41,20 @@ enum TimeUtils {
             return calendar.date(bySettingHour: freeStartHour, minute: 0, second: 0, of: date)
         }
 
-        // At or past the window close — resumes either at midnight (if
-        // tomorrow is a weekend) or freeStartHour tomorrow (if a weekday).
+        // At or past today's close. This can only happen on Sun (after 11
+        // PM, once the weekend window has ended) or Mon-Thu nights — Fri
+        // nights are always inside the weekend window and caught by the
+        // guard above. Either way, tomorrow's normal reopen is freeStartHour:
+        // Monday is a plain weekday, and if tomorrow were Friday its normal
+        // open is still freeStartHour (the weekend window doesn't start
+        // until 6 PM Friday).
         guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: date) else { return nil }
-        let tomorrowWeekday = calendar.component(.weekday, from: tomorrow)
-        let tomorrowIsWeekend = (tomorrowWeekday == 1 || tomorrowWeekday == 7)
-        let startOfTomorrow = calendar.startOfDay(for: tomorrow)
-
-        return tomorrowIsWeekend
-            ? startOfTomorrow
-            : calendar.date(bySettingHour: freeStartHour, minute: 0, second: 0, of: startOfTomorrow)
+        return calendar.date(bySettingHour: freeStartHour, minute: 0, second: 0, of: calendar.startOfDay(for: tomorrow))
     }
 
     /// Label for the lockout banner: "LOCKED UNTIL 8:00 AM" if the window
     /// reopens later today, or "LOCKED UNTIL TOMORROW 8:00 AM" if it spans
-    /// to the next day. Never further out than that — weekday lockouts max
-    /// out at one day, since weekends are always free time.
+    /// to the next day.
     static func lockoutLabel(from date: Date = Date(), calendar: Calendar = .current) -> String {
         guard let next = nextFreeTime(from: date, calendar: calendar) else {
             return "RESTRICTED"

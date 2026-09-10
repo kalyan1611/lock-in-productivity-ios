@@ -37,8 +37,11 @@ struct ContentView: View {
                             goalsFullyMet: network.goalsFullyMet,
                             availableToClaimMinutes: network.availableToClaimMinutes,
                             remainingMinutes: network.remainingMinutesToday,
+                            stepsWaivedToday: network.waiveOffStatus?.stepsWaivedToday ?? false,
+                            gymWaivedToday: network.waiveOffStatus?.gymWaivedToday ?? false,
+                            leetcodeWaivedToday: network.waiveOffStatus?.leetcodeWaivedToday ?? false,
                             isClaiming: isClaiming,
-                            onClaim: { await claimCredit() }
+                            onClaim: { minutes in await claimCredit(minutes: minutes) }
                         )
                     }
                     .padding(.horizontal, 10)
@@ -207,12 +210,12 @@ struct ContentView: View {
         }
     }
 
-    private func claimCredit() async {
+    private func claimCredit(minutes: Int) async {
         guard !isClaiming else { return }
         isClaiming = true
         defer { isClaiming = false }
         do {
-            try await NetworkManager.shared.claim()
+            try await NetworkManager.shared.claim(minutes: minutes)
         } catch {
             lastSyncStatus = "Couldn't claim credit — \(error.localizedDescription)"
         }

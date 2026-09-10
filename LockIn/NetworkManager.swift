@@ -190,11 +190,13 @@ final class NetworkManager: ObservableObject {
         }
     }
 
-    /// Locks in everything currently available (per the last sync) into
-    /// today's spendable balance.
+    /// Locks in credit into today's spendable balance. Pass `minutes` to
+    /// claim exactly that amount (the ESP32 rounds it down to the nearest
+    /// 10 and clamps it to what's actually available); pass nil to claim
+    /// everything currently available, same as before.
     @discardableResult
     @MainActor
-    func claim() async throws -> ClaimResult {
+    func claim(minutes: Int? = nil) async throws -> ClaimResult {
         guard let url = URL(string: esp32BaseURL + AppConfig.Gate.claimPath) else {
             throw SyncError(message: "Invalid ESP32 address")
         }
@@ -203,6 +205,11 @@ final class NetworkManager: ObservableObject {
         request.httpMethod = AppConfig.Gate.Method.post
         request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
         request.timeoutInterval = AppConfig.Gate.requestTimeout
+
+        if let minutes {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["minutes": minutes])
+        }
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {

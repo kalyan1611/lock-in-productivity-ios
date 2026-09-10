@@ -1,4 +1,3 @@
-
 import SwiftUI
 
 // MARK: - Gate Hero (Device Status Card)
@@ -10,10 +9,20 @@ struct GateHero: View {
     let goalsFullyMet: Bool?
     let availableToClaimMinutes: Int?
     let remainingMinutes: Int?
+    /// Whether the two goals required for `goalsFullyMet` were met via a
+    /// waive-off rather than actually completed — used to avoid claiming
+    /// "goals complete" when nothing was actually finished.
+    let stepsWaivedToday: Bool
+    let gymWaivedToday: Bool
+    let leetcodeWaivedToday: Bool
     let isClaiming: Bool
-    let onClaim: () async -> Void
+    let onClaim: (Int) async -> Void
 
     private let lowBalanceThresholdMinutes = 10
+    private let claimStepMinutes = 10
+
+    @State private var isPickingAmount = false
+    @State private var selectedMinutes: Double = 10
 
     // MARK: - State
 
@@ -26,6 +35,10 @@ struct GateHero: View {
         }
 
         return remaining > 0 && remaining <= lowBalanceThresholdMinutes
+    }
+
+    private var unlockedViaWaiveOff: Bool {
+        goalsFullyMet == true && (stepsWaivedToday && leetcodeWaivedToday && gymWaivedToday)
     }
 
     private var tint: Color {
@@ -43,7 +56,7 @@ struct GateHero: View {
         switch isOpen {
         case .some(true):
             if goalsFullyMet == true {
-                return "UNLOCKED FOR TODAY"
+                return unlockedViaWaiveOff ? "UNLOCKED (WAIVED)" : "UNLOCKED FOR TODAY"
             }
 
             if let remaining = remainingMinutes {
@@ -90,6 +103,10 @@ struct GateHero: View {
                     .overlay(Palette.surfaceStroke)
 
                 creditSection
+
+                if isPickingAmount {
+                    claimAmountPicker
+                }
             }
 
             if let errorMessage {
@@ -105,6 +122,9 @@ struct GateHero: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(Palette.surfaceStroke, lineWidth: 1)
         )
+        .onChange(of: showsClaimButton) { _, nowShows in
+            if !nowShows { isPickingAmount = false }
+        }
     }
 
     // MARK: - Identity Row
@@ -235,7 +255,7 @@ struct GateHero: View {
 
     private var availableCreditIcon: String {
         if goalsFullyMet == true {
-            return "checkmark.circle.fill"
+            return unlockedViaWaiveOff ? "ticket.fill" : "checkmark.circle.fill"
         }
 
         if (availableToClaimMinutes ?? 0) > 0 {
@@ -247,7 +267,7 @@ struct GateHero: View {
 
     private var availableCreditTint: Color {
         if goalsFullyMet == true {
-            return Palette.open
+            return unlockedViaWaiveOff ? Palette.waived : Palette.open
         }
 
         if (availableToClaimMinutes ?? 0) > 0 {
@@ -259,7 +279,7 @@ struct GateHero: View {
 
     private var availableCreditText: String {
         if goalsFullyMet == true {
-            return "Goals complete"
+            return unlockedViaWaiveOff ? "Unlocked via waive-off" : "Goals complete"
         }
 
         if let available = availableToClaimMinutes,
@@ -299,7 +319,7 @@ struct GateHero: View {
 
     private var availableCreditTextTint: Color {
         if goalsFullyMet == true {
-            return Palette.open
+            return unlockedViaWaiveOff ? Palette.waived : Palette.open
         }
 
         if (availableToClaimMinutes ?? 0) > 0 {
@@ -323,46 +343,93 @@ struct GateHero: View {
         return "No balance"
     }
 
-    // MARK: - Claim Button
+    // MARK: - Claim Button & Amount Picker
+
+    /// Available minutes rounded down to a whole claim step — the slider
+    /// only ever offers multiples of `claimStepMinutes`, matching what the
+    /// ESP32 will actually honor.
+    private var availableSteppedMinutes: Int {
+        guard let available = availableToClaimMinutes else { return 0 }
+        return (available / claimStepMinutes) * claimStepMinutes
+    }
 
     private var showsClaimButton: Bool {
-        goalsFullyMet != true &&
-            (availableToClaimMinutes ?? 0) > 0
+        goalsFullyMet != true && availableSteppedMinutes >= claimStepMinutes
     }
 
     private var claimButton: some View {
         Button {
-            Task {
-                await onClaim()
-            }
+            selectedMinutes = Double(availableSteppedMinutes) // default to everything available
+            isPickingAmount = true
         } label: {
-            HStack(spacing: 5) {
-                if isClaiming {
-                    ProgressView()
-                        .scaleEffect(0.55)
-                        .frame(width: 12, height: 12)
-                } else {
-                    Text("Claim")
-                        .font(.system(size: 11, weight: .bold))
-                }
-            }
-            .foregroundStyle(Palette.open)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 5)
-            .background(
-                Capsule()
-                    .fill(Palette.open.opacity(0.12))
-            )
-            .overlay(
-                Capsule()
-                    .stroke(
-                        Palette.open.opacity(0.4),
-                        lineWidth: 1
-                    )
-            )
+            Text("Claim")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Palette.open)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 5)
+                .background(
+                    Capsule()
+                        .fill(Palette.open.opacity(0.12))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(
+                            Palette.open.opacity(0.4),
+                            lineWidth: 1
+                        )
+                )
         }
         .buttonStyle(.plain)
-        .disabled(isClaiming)
+    }
+
+    /// Small slider (10m -> everything available, in 10m steps) that
+    /// appears once "Claim" is tapped, so you choose exactly how much of
+    /// today's earned credit to spend rather than always claiming it all.
+    private var claimAmountPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Claim \(formatMinutes(Int(selectedMinutes)))")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Palette.textPrimary)
+
+                Spacer()
+
+                Button {
+                    isPickingAmount = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(Palette.textSecondary)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    let minutes = Int(selectedMinutes)
+                    isPickingAmount = false
+                    Task { await onClaim(minutes) }
+                } label: {
+                    if isClaiming {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 18, height: 18)
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(Palette.open)
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(isClaiming)
+            }
+
+            Slider(
+                value: $selectedMinutes,
+                in: Double(claimStepMinutes) ... Double(max(availableSteppedMinutes, claimStepMinutes)),
+                step: Double(claimStepMinutes)
+            )
+            .tint(Palette.open)
+        }
+        .padding(.top, 2)
     }
 
     // MARK: Error Row
