@@ -204,6 +204,30 @@ struct ContentView: View {
             )
 
             await network.fetchWaiveOffStatus()
+
+            // Log today's outcome per goal for the (future) weekly
+            // retrospective. Deliberately computed from the same
+            // locally-known values the goal cards themselves already use
+            // (HealthKit / GymTracker / LeetCodeManager completion flags +
+            // the freshly-fetched waive-off status) rather than from the
+            // ESP32's response, so this stays accurate regardless of
+            // whatever /sync is being fed above. Safe to call every
+            // refresh — see DailyOutcomeStore's doc comment.
+            DailyOutcomeStore.recordOutcome(
+                goal: .steps,
+                metGoal: healthKit.areTodaysStepsCompleted,
+                waivedToday: network.waiveOffStatus?.stepsWaivedToday ?? false
+            )
+            DailyOutcomeStore.recordOutcome(
+                goal: .gym,
+                metGoal: gymTracker.isGymSessionCompleted,
+                waivedToday: network.waiveOffStatus?.gymWaivedToday ?? false
+            )
+            DailyOutcomeStore.recordOutcome(
+                goal: .leetcode,
+                metGoal: leetCode.isGoalMet,
+                waivedToday: network.waiveOffStatus?.leetcodeWaivedToday ?? false
+            )
         } catch {
             print("sendSync failed: \(error)")
             lastSyncStatus = "Couldn't reach your gate device — \(error.localizedDescription)"
