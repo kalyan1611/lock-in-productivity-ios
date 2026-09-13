@@ -9,7 +9,7 @@ struct GateHero: View {
     let goalsFullyMet: Bool?
     let availableToClaimMinutes: Int?
     let remainingMinutes: Int?
-    /// Whether the two goals required for `goalsFullyMet` were met via a
+    /// Whether the three goals required for `goalsFullyMet` were met via a
     /// waive-off rather than actually completed — used to avoid claiming
     /// "goals complete" when nothing was actually finished.
     let stepsWaivedToday: Bool
@@ -398,7 +398,7 @@ struct GateHero: View {
                     isPickingAmount = false
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 18))
+                        .font(.system(size: 30))
                         .foregroundStyle(Palette.textSecondary)
                 }
                 .buttonStyle(.plain)
@@ -410,11 +410,11 @@ struct GateHero: View {
                 } label: {
                     if isClaiming {
                         ProgressView()
-                            .scaleEffect(0.7)
+                            .scaleEffect(0.5)
                             .frame(width: 18, height: 18)
                     } else {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 18))
+                            .font(.system(size: 30))
                             .foregroundStyle(Palette.open)
                     }
                 }
