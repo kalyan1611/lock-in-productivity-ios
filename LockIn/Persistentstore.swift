@@ -63,6 +63,19 @@ enum KeychainStore {
         SecItemDelete(query(for: key) as CFDictionary)
     }
 
+    /// Deletes every item ever written under this build's Keychain service —
+    /// i.e. everything under `com.lockin.persistent` or, in DEBUG builds,
+    /// `com.lockin.persistent.debug`. Used by `DebugDataSeeder` to reset the
+    /// debug namespace before regenerating fresh synthetic test data;
+    /// nothing in the Release build path calls this.
+    static func removeAll() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+
     /// Whether a value has ever been written for this key — distinct from
     /// `double`/`integer` returning their zero default, so callers can tell
     /// "explicitly zero" apart from "never recorded."

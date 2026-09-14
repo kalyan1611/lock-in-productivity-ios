@@ -150,63 +150,77 @@ final class LeetCodeManager: ObservableObject {
     // MARK: - Fetch Today's Stats
 
     func fetchTodaySolvedProblems() async {
-        let trimmedUser = username.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedUser.isEmpty else {
-            errorMessage = "Username empty"
-            return
-        }
-
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            // 1. Fetch recent AC submissions
-            let submissions = try await fetchRecentACSubmissions(username: trimmedUser)
-
-            // 2. Filter for today's submissions
-            let calendar = Calendar.current
-            let todaySubmissions = submissions.filter { sub in
-                guard let timestampSec = Double(sub.timestamp) else { return false }
-                let date = Date(timeIntervalSince1970: timestampSec)
-                return calendar.isDateInToday(date)
-            }
-
-            // Deduplicate unique solved problems today
-            let uniqueSlugs = Array(Set(todaySubmissions.map(\.titleSlug)))
-
-            // 3. Concurrently fetch difficulty for today's unique problems
-            var easy = 0
-            var medium = 0
-            var hard = 0
-
-            try await withThrowingTaskGroup(of: String.self) { group in
-                for slug in uniqueSlugs {
-                    group.addTask {
-                        try await self.fetchProblemDifficulty(titleSlug: slug)
-                    }
-                }
-
-                for try await difficulty in group {
-                    switch difficulty.lowercased() {
-                    case "easy": easy += 1
-                    case "medium": medium += 1
-                    case "hard": hard += 1
-                    default: break
-                    }
-                }
-            }
-
-            easyTodayCount = easy
-            mediumTodayCount = medium
-            hardTodayCount = hard
+        #if DEBUG
+            // Debug builds never call the real LeetCode API — see
+            // DebugDataSeeder, which already wrote today's entry under these
+            // same keys. Deliberately skip recordTodayCount() here so this
+            // doesn't overwrite the seeded value with a real (zero) fetch.
+            let today = Date()
+            easyTodayCount = KeychainStore.integer(forKey: easyKey(today))
+            mediumTodayCount = KeychainStore.integer(forKey: mediumKey(today))
+            hardTodayCount = KeychainStore.integer(forKey: hardKey(today))
             lastUpdated = Date()
-            isLoading = false
+            errorMessage = nil
+            return
+        #else
+            let trimmedUser = username.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedUser.isEmpty else {
+                errorMessage = "Username empty"
+                return
+            }
 
-            recordTodayCount()
-        } catch {
-            errorMessage = "Failed to update LeetCode data"
-            isLoading = false
-        }
+            isLoading = true
+            errorMessage = nil
+
+            do {
+                // 1. Fetch recent AC submissions
+                let submissions = try await fetchRecentACSubmissions(username: trimmedUser)
+
+                // 2. Filter for today's submissions
+                let calendar = Calendar.current
+                let todaySubmissions = submissions.filter { sub in
+                    guard let timestampSec = Double(sub.timestamp) else { return false }
+                    let date = Date(timeIntervalSince1970: timestampSec)
+                    return calendar.isDateInToday(date)
+                }
+
+                // Deduplicate unique solved problems today
+                let uniqueSlugs = Array(Set(todaySubmissions.map(\.titleSlug)))
+
+                // 3. Concurrently fetch difficulty for today's unique problems
+                var easy = 0
+                var medium = 0
+                var hard = 0
+
+                try await withThrowingTaskGroup(of: String.self) { group in
+                    for slug in uniqueSlugs {
+                        group.addTask {
+                            try await self.fetchProblemDifficulty(titleSlug: slug)
+                        }
+                    }
+
+                    for try await difficulty in group {
+                        switch difficulty.lowercased() {
+                        case "easy": easy += 1
+                        case "medium": medium += 1
+                        case "hard": hard += 1
+                        default: break
+                        }
+                    }
+                }
+
+                easyTodayCount = easy
+                mediumTodayCount = medium
+                hardTodayCount = hard
+                lastUpdated = Date()
+                isLoading = false
+
+                recordTodayCount()
+            } catch {
+                errorMessage = "Failed to update LeetCode data"
+                isLoading = false
+            }
+        #endif
     }
 
     // MARK: - GraphQL API Calls

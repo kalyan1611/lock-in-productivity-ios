@@ -20,6 +20,9 @@ struct ActivityCard: View {
     /// it's meant to describe would animate with the previous direction.
     @State private var tabDirection: Int = 1
 
+    /// Drives the share-card sheet — see `header`'s share button.
+    @State private var isSharePickerPresented = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
@@ -54,6 +57,9 @@ struct ActivityCard: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Palette.surfaceStroke, lineWidth: 1)
         )
+        .sheet(isPresented: $isSharePickerPresented) {
+            ShareCardPicker(initialTab: selectedTab, dataProvider: shareData(for:))
+        }
     }
 
     // MARK: - Tab content dispatch
@@ -82,7 +88,7 @@ struct ActivityCard: View {
         )
     }
 
-    // MARK: - Header (title + ticket badge tied to selected tab)
+    // MARK: - Header (title + ticket badge + share button)
 
     private var isCompletedForTab: Bool {
         switch selectedTab {
@@ -126,6 +132,74 @@ struct ActivityCard: View {
                     onTapWaiveOff(selectedTab.waiveOffType)
                 }
             }
+
+            shareButton
+        }
+    }
+
+    private var shareButton: some View {
+        Button {
+            isSharePickerPresented = true
+        } label: {
+            Image(systemName: "square.and.arrow.up")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Palette.textSecondary)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Palette.surfaceRaised))
+                .overlay(Circle().stroke(Palette.surfaceStroke, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Same value/unit/progress/isCompleted/waived/creditNote each tab's
+    /// `todayStat(...)` call already computes — factored out here so the
+    /// share card can never show numbers that disagree with what's on
+    /// screen right now.
+    /// Just what was actually done, not the target — see ShareStatData.
+    /// Just what was actually done, not the target — see ShareStatData.
+    /// Gym additionally surfaces the actual workout: the persisted session
+    /// if checked out today, or the live in-progress log while still
+    /// checked in — whichever one actually has data right now.
+    private func shareData(for tab: GoalTab) -> ShareStatData {
+        switch tab {
+        case .steps:
+            return ShareStatData(tab: .steps, label: "STEPS", value: "\(healthKit.todaySteps.formatted()) steps")
+
+        case .gym:
+            let session = gymTracker.workoutSession(on: Date())
+            let exercises = session?.exercises ?? (gymTracker.isCheckedIn ? gymTracker.currentSessionLog : [])
+            let splitTitle = session?.split.title ?? (gymTracker.isCheckedIn ? gymTracker.todaySplit.title : nil)
+
+            let breakdown = exercises
+                .filter { !$0.skipped && $0.setsDone > 0 }
+                .map { ShareBreakdownItem(label: $0.name, value: "\($0.setsDone)×\($0.reps)") }
+
+            return ShareStatData(
+                tab: .gym,
+                label: "WORKOUT",
+                value: "\(Int(gymTracker.totalSecondsToday) / 60) min",
+                badge: splitTitle,
+                breakdown: breakdown
+            )
+
+        case .leetcode:
+            var breakdown: [ShareBreakdownItem] = []
+            if leetCode.easyTodayCount > 0 {
+                breakdown.append(ShareBreakdownItem(label: "Easy", value: "\(leetCode.easyTodayCount)", color: Palette.open))
+            }
+            if leetCode.mediumTodayCount > 0 {
+                breakdown.append(ShareBreakdownItem(label: "Medium", value: "\(leetCode.mediumTodayCount)", color: Palette.waived))
+            }
+            if leetCode.hardTodayCount > 0 {
+                breakdown.append(ShareBreakdownItem(label: "Hard", value: "\(leetCode.hardTodayCount)", color: Palette.locked))
+            }
+
+            return ShareStatData(
+                tab: .leetcode,
+                label: "LEETCODE",
+                value: "\(leetCode.totalTodayCount) solved",
+                breakdown: breakdown
+            )
         }
     }
 

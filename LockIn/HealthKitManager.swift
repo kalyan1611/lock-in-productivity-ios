@@ -43,35 +43,40 @@ final class HealthKitManager: ObservableObject {
     /// Cumulative step count from local midnight to now.
     /// Gracefully returns 0 if no step samples exist yet for today.
     func fetchTodaySteps() async throws -> Int {
-        let calendar = Calendar.current
-        let now = Date()
-        let startOfDay = calendar.startOfDay(for: now)
-        let predicate = HKQuery.predicateForSamples(
-            withStart: startOfDay, end: now, options: .strictStartDate
-        )
+        #if DEBUG
+            // Debug builds never touch HealthKit — see DebugDataSeeder.
+            return DebugDataSeeder.stepsToday()
+        #else
+            let calendar = Calendar.current
+            let now = Date()
+            let startOfDay = calendar.startOfDay(for: now)
+            let predicate = HKQuery.predicateForSamples(
+                withStart: startOfDay, end: now, options: .strictStartDate
+            )
 
-        return try await withCheckedThrowingContinuation { continuation in
-            let query = HKStatisticsQuery(
-                quantityType: stepType,
-                quantitySamplePredicate: predicate,
-                options: .cumulativeSum
-            ) { _, result, error in
-                if let error {
-                    let nsError = error as NSError
-                    // Handle "No data available for the specified predicate" (HKError.errorNoData)
-                    if nsError.domain == HKErrorDomain, nsError.code == HKError.errorNoData.rawValue {
-                        continuation.resume(returning: 0)
+            return try await withCheckedThrowingContinuation { continuation in
+                let query = HKStatisticsQuery(
+                    quantityType: stepType,
+                    quantitySamplePredicate: predicate,
+                    options: .cumulativeSum
+                ) { _, result, error in
+                    if let error {
+                        let nsError = error as NSError
+                        // Handle "No data available for the specified predicate" (HKError.errorNoData)
+                        if nsError.domain == HKErrorDomain, nsError.code == HKError.errorNoData.rawValue {
+                            continuation.resume(returning: 0)
+                            return
+                        }
+                        continuation.resume(throwing: error)
                         return
                     }
-                    continuation.resume(throwing: error)
-                    return
-                }
 
-                let sum = result?.sumQuantity()?.doubleValue(for: .count()) ?? 0
-                continuation.resume(returning: Int(sum))
+                    let sum = result?.sumQuantity()?.doubleValue(for: .count()) ?? 0
+                    continuation.resume(returning: Int(sum))
+                }
+                healthStore.execute(query)
             }
-            healthStore.execute(query)
-        }
+        #endif
     }
 
     /// Registers for background delivery and syncs when steps update.
@@ -103,51 +108,56 @@ final class HealthKitManager: ObservableObject {
     /// `endDate` lets paged history views (ActivityCard's week/month pager) request
     /// a window anchored anywhere in the past, not just the trailing 7/30 days.
     func fetchStepsHistory(days: Int, endingOn endDate: Date = Date()) async throws -> [(date: Date, steps: Int)] {
-        let calendar = Calendar.current
-        let referenceEnd = min(endDate, Date())
-        guard let startDate = calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: referenceEnd)) else {
-            return []
-        }
-        // Widened by one day so the query captures the *full* final day
-        // (HealthKit statistics collection queries are start-inclusive,
-        // end-exclusive on the underlying sample window).
-        let queryEnd = min(
-            calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: referenceEnd)) ?? referenceEnd,
-            Date()
-        )
-
-        let predicate = HKQuery.predicateForSamples(withStart: startDate, end: queryEnd, options: .strictStartDate)
-        var interval = DateComponents()
-        interval.day = 1
-
-        return try await withCheckedThrowingContinuation { continuation in
-            let query = HKStatisticsCollectionQuery(
-                quantityType: stepType,
-                quantitySamplePredicate: predicate,
-                options: .cumulativeSum,
-                anchorDate: calendar.startOfDay(for: startDate),
-                intervalComponents: interval
-            )
-            query.initialResultsHandler = { _, results, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
-                }
-                var daily: [(date: Date, steps: Int)] = []
-                results?.enumerateStatistics(from: startDate, to: queryEnd) { stats, _ in
-                    let sum = stats.sumQuantity()?.doubleValue(for: .count()) ?? 0
-                    daily.append((date: stats.startDate, steps: Int(sum)))
-                }
-                // enumerateStatistics can include one extra boundary bucket
-                // dated the day after the intended range (a side effect of
-                // queryEnd's +1-day widening above, needed to capture the
-                // full final day) — trim back to exactly `days` entries so
-                // it doesn't show up as a phantom empty day here and a
-                // duplicate real day on the next page.
-                continuation.resume(returning: Array(daily.prefix(days)))
+        #if DEBUG
+            // Debug builds never touch HealthKit — see DebugDataSeeder.
+            return DebugDataSeeder.stepsHistory(days: days, endingOn: endDate)
+        #else
+            let calendar = Calendar.current
+            let referenceEnd = min(endDate, Date())
+            guard let startDate = calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: referenceEnd)) else {
+                return []
             }
-            healthStore.execute(query)
-        }
+            // Widened by one day so the query captures the *full* final day
+            // (HealthKit statistics collection queries are start-inclusive,
+            // end-exclusive on the underlying sample window).
+            let queryEnd = min(
+                calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: referenceEnd)) ?? referenceEnd,
+                Date()
+            )
+
+            let predicate = HKQuery.predicateForSamples(withStart: startDate, end: queryEnd, options: .strictStartDate)
+            var interval = DateComponents()
+            interval.day = 1
+
+            return try await withCheckedThrowingContinuation { continuation in
+                let query = HKStatisticsCollectionQuery(
+                    quantityType: stepType,
+                    quantitySamplePredicate: predicate,
+                    options: .cumulativeSum,
+                    anchorDate: calendar.startOfDay(for: startDate),
+                    intervalComponents: interval
+                )
+                query.initialResultsHandler = { _, results, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    var daily: [(date: Date, steps: Int)] = []
+                    results?.enumerateStatistics(from: startDate, to: queryEnd) { stats, _ in
+                        let sum = stats.sumQuantity()?.doubleValue(for: .count()) ?? 0
+                        daily.append((date: stats.startDate, steps: Int(sum)))
+                    }
+                    // enumerateStatistics can include one extra boundary bucket
+                    // dated the day after the intended range (a side effect of
+                    // queryEnd's +1-day widening above, needed to capture the
+                    // full final day) — trim back to exactly `days` entries so
+                    // it doesn't show up as a phantom empty day here and a
+                    // duplicate real day on the next page.
+                    continuation.resume(returning: Array(daily.prefix(days)))
+                }
+                healthStore.execute(query)
+            }
+        #endif
     }
 
     @MainActor

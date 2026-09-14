@@ -80,13 +80,19 @@ enum AppConfig {
         static let gymLastCheckInTime = "LockIn_LastCheckInTime"
         static let gymLastCheckOutTime = "LockIn_LastCheckOutTime"
 
-        /// Last split (push/pull/legs) actually completed — rotation reads
-        /// this + WorkoutSplit.next to pick today's split.
-        static let gymLastCompletedSplit = "LockIn_GymLastCompletedSplit"
+        /// UserDefaults — the rawValue (push/pull/legs) of whichever split
+        /// was most recently *completed* (a session was persisted at
+        /// checkout). `GymTracker.loadTodaySplit()` reads this to compute
+        /// `.next` for today; missing means no split has ever been
+        /// completed, so today defaults to `.push`.
+        static let gymLastCompletedSplit = "LockIn_Gym_LastCompletedSplit"
 
-        /// One entry per calendar day (Keychain-backed) holding the actual
-        /// logged WorkoutSession for that date.
-        static let gymWorkoutSessionPrefix = "LockIn_GymWorkoutSession_"
+        /// Keychain prefix, one entry per calendar day (mirrors
+        /// gymSecondsPrefix's pattern) — the JSON-encoded `WorkoutSession`
+        /// (split + per-exercise sets/reps/skip) logged that day. Read
+        /// back by `GymTracker.workoutSession(on:)` for the tapped-bar
+        /// detail view.
+        static let gymWorkoutSessionPrefix = "LockIn_Gym_WorkoutSession_"
 
         /// One entry per calendar day, mirroring gymSecondsPrefix's pattern —
         /// caches LeetCode's daily solved-count locally since the API itself
@@ -104,5 +110,18 @@ enum AppConfig {
         /// sane to show before the first successful fetch of a session
         /// and while offline.
         static let waiveOffStatusCache = "LockIn_WaiveOffStatusCache"
+
+        #if DEBUG
+            /// Keychain (not UserDefaults, despite living in this "keys" enum
+            /// for centralization) cache of synthetic per-day step totals —
+            /// see DebugDataSeeder. Debug builds never write real HealthKit
+            /// data, so this has its own prefix rather than reusing anything
+            /// HealthKit-shaped.
+            static let debugStepsPrefix = "LockIn_Debug_Steps_"
+
+            /// Last calendar day (yyyy-MM-dd) DebugDataSeeder has generated
+            /// data through. Missing = never seeded.
+            static let debugSeedLastDateKey = "LockIn_Debug_SeedLastDate"
+        #endif
     }
 }
