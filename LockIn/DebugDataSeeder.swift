@@ -142,12 +142,19 @@ import Foundation
 
                 let setsDone = min(
                     max(0, Int((Double(prescribed.sets) * performance).rounded())),
-                    prescribed.sets + 1 // occasionally one extra set on a strong day
+                    prescribed.sets + 1
                 )
-                // Reps drift a little set to set in real life rather than
-                // landing exactly on the prescription every time.
-                let reps = max(1, prescribed.reps + Int.random(in: -1 ... 1))
 
+                // Off days occasionally skip one exercise entirely — never on a day
+                // that already cleared the target. A day where nothing got logged
+                // (setsDone == 0) is functionally the same thing, so it's folded into
+                // the same skipped state rather than persisting a hollow "0×N".
+                let explicitSkip = performance < 0.7 && Double.random(in: 0 ... 1) < 0.15
+                guard !explicitSkip, setsDone > 0 else {
+                    return ExerciseLog(name: prescribed.name, reps: 0, setsDone: 0, skipped: true)
+                }
+
+                let reps = max(1, prescribed.reps + Int.random(in: -1 ... 1))
                 return ExerciseLog(name: prescribed.name, reps: reps, setsDone: setsDone, skipped: false)
             }
 

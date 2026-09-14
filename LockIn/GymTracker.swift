@@ -329,7 +329,18 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     private func persistSessionLog() {
-        let session = WorkoutSession(split: todaySplit, exercises: currentSessionLog)
+        // No sets logged means nothing was actually done, whether the user
+        // explicitly hit Skip or just never logged a set — persist both the
+        // same way so every reader (detail view, share card) treats them
+        // identically instead of showing a stray "0×N" result.
+        let sanitized = currentSessionLog.map { exercise -> ExerciseLog in
+            guard exercise.setsDone > 0 else {
+                return ExerciseLog(name: exercise.name, reps: 0, setsDone: 0, skipped: true)
+            }
+            return exercise
+        }
+
+        let session = WorkoutSession(split: todaySplit, exercises: sanitized)
         guard let data = try? JSONEncoder().encode(session),
               let json = String(data: data, encoding: .utf8)
         else { return }
