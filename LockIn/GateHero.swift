@@ -123,7 +123,9 @@ struct GateHero: View {
                 .stroke(Palette.surfaceStroke, lineWidth: 1)
         )
         .onChange(of: showsClaimButton) { _, nowShows in
-            if !nowShows { isPickingAmount = false }
+            if !nowShows {
+                isPickingAmount = false
+            }
         }
     }
 

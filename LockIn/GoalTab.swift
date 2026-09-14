@@ -38,7 +38,7 @@ struct GoalTabSwitcher: View {
     /// block as the `selection` write itself, so both land in one
     /// transaction and the content transition sees the right direction on
     /// its very first render instead of one frame late.
-    var onSelect: ((GoalTab, GoalTab) -> Void)? = nil
+    var onSelect: ((GoalTab, GoalTab) -> Void)?
 
     /// Shared id for the highlight capsule. Because only the currently
     /// selected button inserts a capsule carrying this id, SwiftUI treats

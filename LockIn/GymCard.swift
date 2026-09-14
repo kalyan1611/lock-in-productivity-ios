@@ -102,13 +102,21 @@ struct GymCard: View {
                     .frame(height: checkButtonsHeight)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(gymTracker.isInsideGeofence ? Palette.background : Palette.textSecondary)
-                .background(Capsule().fill(gymTracker.isInsideGeofence ? Palette.open : Palette.surfaceStroke))
-                .disabled(!gymTracker.isInsideGeofence)
+                .foregroundStyle(canCheckIn ? Palette.background : Palette.textSecondary)
+                .background(Capsule().fill(canCheckIn ? Palette.open : Palette.surfaceStroke))
+                .disabled(!canCheckIn)
 
                 gymGuidanceLabel
             }
         }
+    }
+
+    private var canCheckIn: Bool {
+        #if DEBUG
+            return true
+        #else
+            return gymTracker.isInsideGeofence
+        #endif
     }
 
     private var gymGuidanceLabel: some View {

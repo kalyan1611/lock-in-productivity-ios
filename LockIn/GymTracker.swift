@@ -10,7 +10,11 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     let targetGymDurationMinutes: Int = AppConfig.Gym.targetDurationMinutes
     var targetGymDurationSeconds: TimeInterval {
-        AppConfig.Gym.targetDurationSeconds
+        #if DEBUG
+            return 60
+        #else
+            return AppConfig.Gym.targetDurationSeconds
+        #endif
     }
 
     private let minimumRecordedSessionSeconds: TimeInterval = AppConfig.Gym.minimumRecordedSessionSeconds
@@ -21,34 +25,23 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // MARK: - Published State
 
-    /// True when the latest location check confirms the device is inside the gym radius.
     @Published var isInsideGeofence = false
-
-    /// Distance to the gym in meters, updated on location fetches.
     @Published var distanceToGym: CLLocationDistance?
-
-    /// True after the user explicitly checks in.
     @Published var isCheckedIn = false
-
-    /// True once the user has completed their session and checked out for today.
     @Published var hasCheckedOutToday = false
-
-    /// Time at which the current gym session was started.
     @Published var checkInDate: Date?
-
-    /// Total accumulated gym time for today.
     @Published var totalSecondsToday: TimeInterval = 0
-
-    /// True once today's accumulated gym time reaches the target duration.
     @Published var isGymSessionCompleted = false
-
-    /// Time the user checked in today. Persists (unlike `checkInDate`) after checkout,
-    /// and only resets when a new day begins.
     @Published var lastCheckInDate: Date?
-
-    /// Time the user checked out today. Persists after checkout and only resets
-    /// when a new day begins.
     @Published var lastCheckOutDate: Date?
+
+    /// Today's split in the push/pull/legs rotation. See `loadTodaySplit()`.
+    @Published var todaySplit: WorkoutSplit = .push
+
+    /// Editable exercise log for the in-progress (or just-finished) session.
+    /// Seeded from `todaySplit.exercises` at check-in, mutated by
+    /// GymChecklist, persisted at check-out.
+    @Published var currentSessionLog: [ExerciseLog] = []
 
     // MARK: - Location
 
@@ -66,6 +59,8 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     private let lastCheckOutDateKey = AppConfig.DefaultsKey.gymLastCheckOutDate
     private let lastCheckInTimeKey = AppConfig.DefaultsKey.gymLastCheckInTime
     private let lastCheckOutTimeKey = AppConfig.DefaultsKey.gymLastCheckOutTime
+    private let lastCompletedSplitKey = AppConfig.DefaultsKey.gymLastCompletedSplit
+    private let sessionKeyPrefix = AppConfig.DefaultsKey.gymWorkoutSessionPrefix
 
     // MARK: - Computed Properties
 
@@ -83,6 +78,7 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         restoreActiveSession()
         checkDailyCheckoutStatus()
         loadTodayAccumulatedTime()
+        loadTodaySplit()
     }
 
     // MARK: - Location Permission
@@ -93,15 +89,10 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
-    nonisolated func locationManagerDidChangeAuthorization(_: CLLocationManager) {
-        // No background setup required; permission changes are picked up on next refresh.
-    }
+    nonisolated func locationManagerDidChangeAuthorization(_: CLLocationManager) {}
 
     // MARK: - Manual Location Refresh (Pull-to-Refresh)
 
-    /// Requests an accurate location fix by starting continuous updates and
-    /// waiting until horizontal accuracy is under `desiredHorizontalAccuracy`,
-    /// or until the safety timeout elapses (whichever comes first).
     func refreshLocation() {
         bestLocationSoFar = nil
         locationManager.desiredAccuracy = kCLLocationAccuracyBest
@@ -112,7 +103,6 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
             guard let self else { return }
             try? await Task.sleep(nanoseconds: locationRefreshTimeoutSeconds * 1_000_000_000)
             guard !Task.isCancelled else { return }
-
             print("Location refresh timed out after \(locationRefreshTimeoutSeconds)s — using best fix so far")
             locationManager.stopUpdatingLocation()
             applyBestFixIfNeeded()
@@ -126,10 +116,9 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         didUpdateLocations locations: [CLLocation]
     ) {
         guard let latestLocation = locations.last else { return }
-        guard latestLocation.horizontalAccuracy > 0 else { return } // negative = invalid fix
+        guard latestLocation.horizontalAccuracy > 0 else { return }
 
         Task { @MainActor in
-            // Track the most accurate fix we've seen, in case we time out before hitting target accuracy
             if self.bestLocationSoFar == nil ||
                 latestLocation.horizontalAccuracy < self.bestLocationSoFar!.horizontalAccuracy
             {
@@ -137,13 +126,9 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
 
             let distance = latestLocation.distance(from: CLLocation(latitude: gymLatitude, longitude: gymLongitude))
-
-            print("Distance to gym: \(distance)m (accuracy: \(latestLocation.horizontalAccuracy)m) — current location: \(latestLocation.coordinate.latitude), \(latestLocation.coordinate.longitude)")
-
             self.distanceToGym = distance
             self.isInsideGeofence = (distance <= gymRadiusMeters)
 
-            // Stop only once we've got a fix accurate enough to trust
             if latestLocation.horizontalAccuracy <= desiredHorizontalAccuracy {
                 manager.stopUpdatingLocation()
                 self.locationRefreshTimeoutTask?.cancel()
@@ -152,47 +137,38 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
-    /// Called when the safety timeout fires before we reached target accuracy.
-    /// Applies the best fix we managed to get, so state isn't left stale.
     private func applyBestFixIfNeeded() {
         guard let best = bestLocationSoFar else { return }
-
         let distance = best.distance(from: CLLocation(latitude: gymLatitude, longitude: gymLongitude))
         distanceToGym = distance
         isInsideGeofence = (distance <= gymRadiusMeters)
-
-        print("Best available fix: \(distance)m (accuracy: \(best.horizontalAccuracy)m)")
     }
 
-    nonisolated func locationManager(
-        _: CLLocationManager,
-        didFailWithError error: Error
-    ) {
+    nonisolated func locationManager(_: CLLocationManager, didFailWithError error: Error) {
         print("Location manager failed with error: \(error.localizedDescription)")
     }
 
     // MARK: - Check In
 
     func checkIn() {
-        guard isInsideGeofence else { return }
+        #if DEBUG
+            let locationOK = true
+        #else
+            let locationOK = isInsideGeofence
+        #endif
+        guard locationOK else { return }
         guard !isCheckedIn else { return }
         guard !hasCheckedOutToday else { return }
 
         let now = Date()
-
         isCheckedIn = true
         checkInDate = now
         lastCheckInDate = now
 
-        userDefaults.set(
-            now.timeIntervalSince1970,
-            forKey: entryTimeKey
-        )
+        userDefaults.set(now.timeIntervalSince1970, forKey: entryTimeKey)
+        userDefaults.set(now.timeIntervalSince1970, forKey: lastCheckInTimeKey)
 
-        userDefaults.set(
-            now.timeIntervalSince1970,
-            forKey: lastCheckInTimeKey
-        )
+        startSessionLog()
     }
 
     // MARK: - Manual Check Out
@@ -202,15 +178,12 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         guard let checkInDate else { return }
 
         let elapsed = Date().timeIntervalSince(checkInDate)
-
-        guard elapsed >= targetGymDurationSeconds else {
-            return
-        }
+        guard elapsed >= targetGymDurationSeconds else { return }
 
         calculateAndRecordSession()
+        persistSessionLog()
 
         let now = Date()
-
         isCheckedIn = false
         self.checkInDate = nil
         hasCheckedOutToday = true
@@ -223,17 +196,12 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     // MARK: - Restore Active Session
 
     private func restoreActiveSession() {
-        guard let timestamp = userDefaults.object(forKey: entryTimeKey) as? Double else {
-            return
-        }
-
+        guard let timestamp = userDefaults.object(forKey: entryTimeKey) as? Double else { return }
         let date = Date(timeIntervalSince1970: timestamp)
-
         guard date <= Date() else {
             userDefaults.removeObject(forKey: entryTimeKey)
             return
         }
-
         isCheckedIn = true
         checkInDate = date
     }
@@ -254,9 +222,8 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
 
         loadPersistedCheckTimes()
+        loadTodaySplit()
     }
-
-    // MARK: - Load Persisted Check In / Check Out Times
 
     private func loadPersistedCheckTimes() {
         if let timestamp = userDefaults.object(forKey: lastCheckInTimeKey) as? Double {
@@ -275,9 +242,7 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
     // MARK: - Time Engine
 
     func calculateAndRecordSession() {
-        guard let entryTimestamp = userDefaults.object(forKey: entryTimeKey) as? Double else {
-            return
-        }
+        guard let entryTimestamp = userDefaults.object(forKey: entryTimeKey) as? Double else { return }
 
         let entryDate = Date(timeIntervalSince1970: entryTimestamp)
         let sessionDuration = Date().timeIntervalSince(entryDate)
@@ -294,13 +259,8 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         saveTodayAccumulatedTime(newTotal)
     }
 
-    // MARK: - Load Today's Time
-
     func loadTodayAccumulatedTime() {
         let todayKey = todayDateString()
-        // Keychain, not UserDefaults — see PersistentStore.swift. This is
-        // the same value Week/Month history charts read back, and losing
-        // it on a reinstall would silently erase past days from the chart.
         let storedSeconds = KeychainStore.double(forKey: secondsKey + todayKey)
 
         var activeSession: TimeInterval = 0
@@ -314,8 +274,6 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         isGymSessionCompleted = totalSecondsToday >= targetGymDurationSeconds
     }
 
-    // MARK: - Save Today's Time
-
     private func saveTodayAccumulatedTime(_ seconds: TimeInterval) {
         let todayKey = todayDateString()
         KeychainStore.setDouble(seconds, forKey: secondsKey + todayKey)
@@ -323,11 +281,6 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
         isGymSessionCompleted = seconds >= targetGymDurationSeconds
     }
 
-    /// Last `days` calendar days of gym seconds, oldest first, ending on
-    /// `endDate` (default: today). Reads the same date-keyed entries
-    /// `loadTodayAccumulatedTime` already writes. `endDate` lets paged
-    /// history views (ActivityCard's week/month pager) request a window
-    /// anchored anywhere in the past, not just the trailing 7/30 days.
     func secondsHistory(days: Int, endingOn endDate: Date = Date()) -> [(date: Date, seconds: Double)] {
         let calendar = Calendar.current
         let formatter = DateFormatter()
@@ -343,6 +296,60 @@ final class GymTracker: NSObject, ObservableObject, CLLocationManagerDelegate {
             result.append((date: calendar.startOfDay(for: day), seconds: seconds))
         }
         return result
+    }
+
+    // MARK: - Workout Split & Session Logging
+
+    /// Today's split rotates off whichever split was last *completed* —
+    /// not the weekday — so a skipped day never desyncs the cycle from the
+    /// calendar. If today's session is already logged (e.g. relaunching
+    /// the app after finishing), sticks to that recorded split instead of
+    /// recomputing, so it can't flip out from under a completed session.
+    private func loadTodaySplit() {
+        if let existing = workoutSession(on: Date()) {
+            todaySplit = existing.split
+            return
+        }
+        guard let lastRaw = userDefaults.string(forKey: lastCompletedSplitKey),
+              let last = WorkoutSplit(rawValue: lastRaw)
+        else {
+            todaySplit = .push
+            return
+        }
+        todaySplit = last.next
+    }
+
+    /// Called on check-in — seeds the editable log with the prescribed
+    /// sets/reps. "Assume all sets and reps as planned" is the default;
+    /// GymChecklist lets you correct it before checkout.
+    private func startSessionLog() {
+        currentSessionLog = todaySplit.exercises.map {
+            ExerciseLog(name: $0.name, reps: 0, setsDone: 0, skipped: false)
+        }
+    }
+
+    private func persistSessionLog() {
+        let session = WorkoutSession(split: todaySplit, exercises: currentSessionLog)
+        guard let data = try? JSONEncoder().encode(session),
+              let json = String(data: data, encoding: .utf8)
+        else { return }
+        KeychainStore.setString(json, forKey: sessionKeyPrefix + todayDateString())
+        userDefaults.set(todaySplit.rawValue, forKey: lastCompletedSplitKey)
+    }
+
+    /// Logged workout for a given calendar day, if one was recorded — nil
+    /// for rest days or days before this feature shipped.
+    func workoutSession(on date: Date) -> WorkoutSession? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy-MM-dd"
+        let key = sessionKeyPrefix + formatter.string(from: date)
+        guard let json = KeychainStore.string(forKey: key),
+              let data = json.data(using: .utf8),
+              let session = try? JSONDecoder().decode(WorkoutSession.self, from: data)
+        else { return nil }
+        return session
     }
 
     // MARK: - Date

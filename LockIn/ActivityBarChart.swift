@@ -53,6 +53,12 @@ struct ActivityBarChart: View {
     /// is why this defaults to true for LeetCode's caller.
     var showTargetLine: Bool = true
 
+    /// Whether tapping a bar to reveal detail is allowed in week view too,
+    /// not just month. Steps/LeetCode keep week bars non-tappable (their
+    /// per-bar total label already shows everything); Gym turns this on so
+    /// a tapped week bar can reveal the actual logged workout.
+    var allowWeekSelection: Bool = false
+
     /// Bar fills are drawn at reduced opacity vs. their source Palette
     /// color. A saturated mint/green reads fine as a small badge or icon,
     /// but as a filled bar covering real surface area against pure black
@@ -81,7 +87,9 @@ struct ActivityBarChart: View {
         period == .month ? 2 : 4
     }
 
-    private var topLabelFontSize: CGFloat { 11 }
+    private var topLabelFontSize: CGFloat {
+        11
+    }
 
     /// Small fixed inset so bars don't touch the very edge of the chart's
     /// bounding box.
@@ -179,10 +187,7 @@ struct ActivityBarChart: View {
                 .frame(width: barWidth)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    // Week already shows every bar's value up top, so
-                    // there's nothing a tap would reveal — only month
-                    // (which relies on the external detail row) needs this.
-                    guard period == .month else { return }
+                    guard period == .month || allowWeekSelection else { return }
                     selectedIndex = isSelected ? nil : index
                 }
             }
@@ -191,7 +196,6 @@ struct ActivityBarChart: View {
 
     // MARK: - Top row (week only — total above each bar; fixed height always)
 
-    @ViewBuilder
     private func topRow(for entry: Entry) -> some View {
         Group {
             if period != .month, entry.total > 0 {

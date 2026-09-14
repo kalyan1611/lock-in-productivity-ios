@@ -221,30 +221,47 @@ struct ActivityCard: View {
 
             gymActionButton
 
-            Divider().overlay(Palette.surfaceStroke)
+            Group {
+                if gymTracker.isCheckedIn {
+                    GymChecklist(split: gymTracker.todaySplit, log: $gymTracker.currentSessionLog)
+                        .id("checklist")
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        ))
+                } else {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Divider().overlay(Palette.surfaceStroke)
 
-            PeriodSwitcher(selection: $selectedPeriod)
+                        PeriodSwitcher(selection: $selectedPeriod)
 
-            PagedActivityChart(
-                totalPages: totalPages,
-                period: selectedPeriod,
-                target: Double(gymTracker.targetGymDurationMinutes),
-                valueLabel: { "\(Int($0))m" },
-                showTargetLine: false,
-                rangeLabel: { periodRangeLabel(forPage: $0) },
-                subtitle: { pageSubtitle(forPage: $0) },
-                fetchEntries: { await gymEntries(forPage: $0) },
-                detailFor: { entry in
-                    SelectedBarDetail(
-                        dateText: fullDateLabel(entry.date),
-                        totalText: "\(Int(entry.total))",
-                        unitText: "min",
-                        totalColor: entry.total >= Double(gymTracker.targetGymDurationMinutes) ? Palette.open : Palette.textPrimary,
-                        breakdown: []
-                    )
+                        PagedActivityChart(
+                            totalPages: totalPages,
+                            period: selectedPeriod,
+                            target: Double(gymTracker.targetGymDurationMinutes),
+                            valueLabel: { "\(Int($0))m" },
+                            showTargetLine: false,
+                            allowWeekSelection: true,
+                            rangeLabel: { periodRangeLabel(forPage: $0) },
+                            subtitle: { pageSubtitle(forPage: $0) },
+                            fetchEntries: { await gymEntries(forPage: $0) },
+                            detailFor: { entry in
+                                WorkoutSessionDetail(
+                                    dateText: fullDateLabel(entry.date),
+                                    session: gymTracker.workoutSession(on: entry.date)
+                                )
+                            }
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .id("chart")
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .leading).combined(with: .opacity),
+                        removal: .move(edge: .trailing).combined(with: .opacity)
+                    ))
                 }
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .animation(.easeInOut(duration: 0.3), value: gymTracker.isCheckedIn)
         }
     }
 
@@ -307,13 +324,21 @@ struct ActivityCard: View {
                     .frame(height: 46)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(gymTracker.isInsideGeofence ? Palette.background : Palette.textSecondary)
-                .background(Capsule().fill(gymTracker.isInsideGeofence ? Palette.open : Palette.surfaceStroke))
-                .disabled(!gymTracker.isInsideGeofence)
+                .foregroundStyle(canCheckIn ? Palette.background : Palette.textSecondary)
+                .background(Capsule().fill(canCheckIn ? Palette.open : Palette.surfaceStroke))
+                .disabled(!canCheckIn)
 
                 gymGuidanceLabel
             }
         }
+    }
+
+    private var canCheckIn: Bool {
+        #if DEBUG
+            return true
+        #else
+            return gymTracker.isInsideGeofence
+        #endif
     }
 
     private var gymGuidanceLabel: some View {
@@ -563,7 +588,13 @@ private struct GymCountdownButton: View {
     private func countdownButton(at now: Date) -> some View {
         let elapsed = now.timeIntervalSince(checkInDate)
         let canCheckOut = elapsed >= gymTracker.targetGymDurationSeconds
-        let readyToCheckOut = canCheckOut && gymTracker.isInsideGeofence
+
+        #if DEBUG
+            let readyToCheckOut = canCheckOut
+        #else
+            let readyToCheckOut = canCheckOut && gymTracker.isInsideGeofence
+        #endif
+
         let remaining = max(gymTracker.targetGymDurationSeconds - elapsed, 0)
         let label = canCheckOut ? "Check Out" : timeString(from: remaining)
         let icon = canCheckOut ? "figure.walk.departure" : "timer"
@@ -607,18 +638,17 @@ private struct GymCountdownButton: View {
 /// Re-created fresh whenever the parent tab changes (steps/gym/leetcode
 /// each get their own instance), and resets itself internally whenever
 /// `period` (week/month) changes.
-private struct PagedActivityChart: View {
+private struct PagedActivityChart<Detail: View>: View {
     let totalPages: Int
     let period: StatsPeriod
     let target: Double
     let valueLabel: (Double) -> String
     var showTargetLine: Bool = true
-    /// "Aug 31 – Today" / "Aug 24 – Aug 30" etc., for the page currently on screen.
+    var allowWeekSelection: Bool = false
     let rangeLabel: (Int) -> String
-    /// "This week" / "2 weeks ago" etc.
     let subtitle: (Int) -> String
     let fetchEntries: (Int) async -> [ActivityBarChart.Entry]
-    let detailFor: (ActivityBarChart.Entry) -> SelectedBarDetail
+    let detailFor: (ActivityBarChart.Entry) -> Detail
 
     @State private var pageIndex: Int
     @State private var selectedBarIndex: Int?
@@ -630,21 +660,22 @@ private struct PagedActivityChart: View {
         target: Double,
         valueLabel: @escaping (Double) -> String,
         showTargetLine: Bool = true,
+        allowWeekSelection: Bool = false,
         rangeLabel: @escaping (Int) -> String,
         subtitle: @escaping (Int) -> String,
         fetchEntries: @escaping (Int) async -> [ActivityBarChart.Entry],
-        detailFor: @escaping (ActivityBarChart.Entry) -> SelectedBarDetail
+        detailFor: @escaping (ActivityBarChart.Entry) -> Detail
     ) {
         self.totalPages = totalPages
         self.period = period
         self.target = target
         self.valueLabel = valueLabel
         self.showTargetLine = showTargetLine
+        self.allowWeekSelection = allowWeekSelection
         self.rangeLabel = rangeLabel
         self.subtitle = subtitle
         self.fetchEntries = fetchEntries
         self.detailFor = detailFor
-        // Open on the last page (today's period), not the oldest one.
         _pageIndex = State(initialValue: max(totalPages - 1, 0))
     }
 
@@ -652,7 +683,7 @@ private struct PagedActivityChart: View {
         VStack(alignment: .leading, spacing: 10) {
             header
 
-            if period == .month,
+            if period == .month || allowWeekSelection,
                let entries = cache[pageIndex],
                let index = selectedBarIndex,
                entries.indices.contains(index)
@@ -669,7 +700,8 @@ private struct PagedActivityChart: View {
                         period: period,
                         selectedIndex: barSelection(for: page),
                         valueLabel: valueLabel,
-                        showTargetLine: showTargetLine
+                        showTargetLine: showTargetLine,
+                        allowWeekSelection: allowWeekSelection
                     )
                     .tag(page)
                     .task(id: page) {
@@ -683,10 +715,6 @@ private struct PagedActivityChart: View {
         }
         .animation(.easeInOut(duration: 0.2), value: selectedBarIndex)
         .onAppear {
-            // .page TabView doesn't reliably honor the State's initial
-            // value on first mount — it tends to just land on tag 0
-            // regardless. Forcing it here guarantees we always open on
-            // "today" (the last page) rather than the oldest one.
             pageIndex = max(totalPages - 1, 0)
         }
         .onChange(of: period) { _, _ in
@@ -720,11 +748,6 @@ private struct PagedActivityChart: View {
         }
     }
 
-    /// ActivityBarChart wants a plain Binding<Int?>, but selection state
-    /// really belongs to "whichever page is on screen" — this routes reads
-    /// and writes through that single piece of state, gated to the page
-    /// asking for it, so swiping away from a page silently drops its
-    /// selection instead of leaking into whatever page you land on next.
     private func barSelection(for page: Int) -> Binding<Int?> {
         Binding(
             get: { pageIndex == page ? selectedBarIndex : nil },

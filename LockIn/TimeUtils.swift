@@ -3,7 +3,6 @@ import SwiftUI
 // MARK: - Time Utilities
 
 enum TimeUtils {
-    
     private static let freeStartHour = 8
     private static let freeEndHour = 23
 

@@ -16,7 +16,13 @@ import Security
 /// Not meant to replace UserDefaults everywhere — just for the specific
 /// history caches where "gone after reinstall" is actually a data-loss bug.
 enum KeychainStore {
-    private static let service = "com.lockin.persistent"
+    private static let service = {
+        #if DEBUG
+            return "com.lockin.persistent.debug"
+        #else
+            return "com.lockin.persistent"
+        #endif
+    }()
 
     private static func query(for key: String) -> [String: Any] {
         [

@@ -80,6 +80,14 @@ enum AppConfig {
         static let gymLastCheckInTime = "LockIn_LastCheckInTime"
         static let gymLastCheckOutTime = "LockIn_LastCheckOutTime"
 
+        /// Last split (push/pull/legs) actually completed — rotation reads
+        /// this + WorkoutSplit.next to pick today's split.
+        static let gymLastCompletedSplit = "LockIn_GymLastCompletedSplit"
+
+        /// One entry per calendar day (Keychain-backed) holding the actual
+        /// logged WorkoutSession for that date.
+        static let gymWorkoutSessionPrefix = "LockIn_GymWorkoutSession_"
+
         /// One entry per calendar day, mirroring gymSecondsPrefix's pattern —
         /// caches LeetCode's daily solved-count locally since the API itself
         /// doesn't expose backdated history.
