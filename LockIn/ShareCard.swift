@@ -42,7 +42,7 @@ struct ShareableStatCard: View {
     static let width: CGFloat = 380
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 4) {
             header
 
             VStack(spacing: 0) {
@@ -55,7 +55,7 @@ struct ShareableStatCard: View {
                 }
             }
         }
-        .padding(24)
+        .padding(20)
         .frame(width: Self.width, alignment: .topLeading)
         .background(Palette.background)
         .overlay(
