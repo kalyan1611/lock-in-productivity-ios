@@ -42,21 +42,21 @@ struct ShareableStatCard: View {
     static let width: CGFloat = 380
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             header
 
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(stats.enumerated()), id: \.element.id) { index, stat in
                     statBlock(stat)
                     if index < stats.count - 1 {
                         Divider().overlay(Palette.surfaceStroke)
-                            .padding(.vertical, 4)
+                            .padding(.vertical, 8)
                     }
                 }
             }
         }
         .padding(20)
-        .frame(width: Self.width, alignment: .topLeading)
+        .frame(minWidth: 220, maxWidth: Self.width, alignment: .leading)
         .background(Palette.background)
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -76,8 +76,16 @@ struct ShareableStatCard: View {
     // MARK: - Stat block
 
     private func statBlock(_ stat: ShareStatData) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            headerRow(stat)
+        VStack(alignment: .leading, spacing: 4) {
+            eyebrowRow(stat)
+
+            if stat.tab != .gym {
+                Text(stat.value)
+                    .font(Typography.display(38))
+                    .foregroundStyle(Palette.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
+            }
 
             if stat.tab == .gym, !stat.breakdown.isEmpty {
                 exerciseList(stat.breakdown)
@@ -87,15 +95,16 @@ struct ShareableStatCard: View {
                 difficultyBadges(stat.breakdown)
             }
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, 6)
     }
 
-    private func headerRow(_ stat: ShareStatData) -> some View {
-        HStack(spacing: 10) {
+    /// Small icon + label + badge — the only thing above the big number,
+    /// same role as the tiny "Steps" caption in the reference card.
+    private func eyebrowRow(_ stat: ShareStatData) -> some View {
+        HStack(spacing: 8) {
             Image(systemName: stat.tab.icon)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Palette.open)
-                .frame(width: 22)
 
             Text(stat.label)
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
@@ -111,27 +120,18 @@ struct ShareableStatCard: View {
                     .padding(.vertical, 3)
                     .background(Capsule().fill(Palette.open.opacity(0.14)))
             }
-
-            Spacer(minLength: 12)
-
-            Text(stat.value)
-                .font(Typography.display(20))
-                .foregroundStyle(Palette.textPrimary)
         }
     }
 
-    /// One aligned row per exercise — name left (truncates rather than
-    /// wraps into a paragraph), sets×reps right in a fixed-width column
-    /// so the numbers line up down the list.
     private func exerciseList(_ items: [ShareBreakdownItem]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             ForEach(items) { item in
                 HStack(spacing: 8) {
                     Circle()
                         .fill(Palette.surfaceStroke)
                         .frame(width: 4, height: 4)
                     Text(item.label)
-                        .font(.system(size: 12))
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(Palette.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -143,11 +143,9 @@ struct ShareableStatCard: View {
                 }
             }
         }
-        .padding(.leading, 32)
+        .padding(.top, 4)
     }
 
-    /// Compact colored dot + count per difficulty, matching the app's own
-    /// easy/medium/hard palette — no plain comma-joined text.
     private func difficultyBadges(_ items: [ShareBreakdownItem]) -> some View {
         HStack(spacing: 16) {
             ForEach(items) { item in
@@ -157,13 +155,13 @@ struct ShareableStatCard: View {
                         .font(.system(size: 13, weight: .bold, design: .monospaced))
                         .foregroundStyle(Palette.textPrimary)
                     Text(item.label)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(Palette.textTertiary)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(.leading, 32)
+        .padding(.top, 2)
     }
 
     private var dateText: String {
@@ -205,10 +203,9 @@ struct ShareCardPicker: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                ScrollView {
-                    previewArea
-                        .padding(.vertical, 12)
-                }
+                Spacer(minLength: 12)
+                previewArea
+                Spacer(minLength: 12)
 
                 VStack(spacing: 16) {
                     selectionBar
@@ -232,18 +229,7 @@ struct ShareCardPicker: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
         }
-        // NOTE: deliberately no `.preferredColorScheme(.dark)` here.
-        // ContentView already forces the whole app (and therefore the
-        // window this sheet is presented into) into dark mode at launch,
-        // so this was a redundant second override. Redeclaring it here
-        // meant that when this sheet's own UIHostingController was
-        // created for the very first time each launch, SwiftUI had to
-        // run an interface-style trait change concurrently with the
-        // sheet's presentation transition — that race is what produced
-        // the solid-black first frame that only cleared on a second tap
-        // (by which point the trait override was already settled). Every
-        // other `.sheet` in the app skips this modifier for the same
-        // reason and doesn't exhibit the bug.
+        .preferredColorScheme(.dark)
         .sheet(isPresented: $isShareSheetPresented) {
             if let renderedImage {
                 ShareSheet(activityItems: [renderedImage])
