@@ -17,6 +17,12 @@ import Foundation
     /// live app does — skipping rotation on rest days, never resetting to
     /// `.push` mid-history.
     ///
+    /// Every seeded day also gets a `DailyOutcomeStore` entry per goal
+    /// (met/waived/missed), derived from that same day's seeded steps/gym/
+    /// LeetCode values — see `seedDailyOutcome`. This is what makes
+    /// ActivityCard's "LAST WK" label show something without waiting a
+    /// real week.
+    ///
     /// To wipe and start over: `DebugDataSeeder.resetAndReseed()` from the
     /// Xcode debugger console (`po DebugDataSeeder.resetAndReseed()`) at a
     /// breakpoint, or from a `print`-triggered call — it deletes everything
@@ -91,9 +97,10 @@ import Foundation
                 .flatMap(WorkoutSplit.init(rawValue:))
 
             while day <= lastDay {
-                seedSteps(for: day)
-                seedGym(for: day, rotationCursor: &rotationCursor)
-                seedLeetCode(for: day)
+                let steps = seedSteps(for: day)
+                let gymSeconds = seedGym(for: day, rotationCursor: &rotationCursor)
+                let leetTotal = seedLeetCode(for: day)
+                seedDailyOutcome(for: day, steps: steps, gymSeconds: gymSeconds, leetTotal: leetTotal)
                 guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
                 day = next
             }
@@ -103,11 +110,13 @@ import Foundation
             }
         }
 
-        private static func seedSteps(for day: Date) {
+        @discardableResult
+        private static func seedSteps(for day: Date) -> Int {
             let value = randomDailyValue(target: Double(AppConfig.Steps.dailyTarget))
             // Round to a plausible step count, not a suspiciously exact multiple.
             let steps = (value / 50).rounded() * 50
             KeychainStore.setDouble(steps, forKey: stepsKey(for: day))
+            return Int(steps)
         }
 
         /// Seeds the day's total gym seconds (drives the chart bar), then —
@@ -117,13 +126,14 @@ import Foundation
         /// log. Days below that minimum are genuine rest days: no session,
         /// and `rotationCursor` doesn't advance, matching `loadTodaySplit()`'s
         /// real "skip a day, rotation picks up where it left off" behavior.
-        private static func seedGym(for day: Date, rotationCursor: inout WorkoutSplit?) {
+        @discardableResult
+        private static func seedGym(for day: Date, rotationCursor: inout WorkoutSplit?) -> Double {
             let rawSeconds = randomDailyValue(target: AppConfig.Gym.targetDurationSeconds)
             let seconds = (rawSeconds / 30).rounded() * 30 // real sessions don't end on the second
             KeychainStore.setDouble(seconds, forKey: gymSecondsKey(for: day))
 
             guard seconds >= AppConfig.Gym.minimumRecordedSessionSeconds else {
-                return // rest day — no session logged, rotation untouched
+                return seconds // rest day — no session logged, rotation untouched
             }
 
             let split = rotationCursor?.next ?? .push
@@ -164,9 +174,11 @@ import Foundation
             }
 
             rotationCursor = split
+            return seconds
         }
 
-        private static func seedLeetCode(for day: Date) {
+        @discardableResult
+        private static func seedLeetCode(for day: Date) -> Int {
             let total = Int(randomDailyValue(target: Double(AppConfig.LeetCode.dailyTargetProblems)).rounded())
 
             // Split into a realistic easy/medium/hard mix — most days lean easy.
@@ -185,6 +197,54 @@ import Foundation
             KeychainStore.setInt(easy, forKey: prefix + AppConfig.DefaultsKey.leetcodeEasySuffix + dateKey)
             KeychainStore.setInt(medium, forKey: prefix + AppConfig.DefaultsKey.leetcodeMediumSuffix + dateKey)
             KeychainStore.setInt(hard, forKey: prefix + AppConfig.DefaultsKey.leetcodeHardSuffix + dateKey)
+            return total
+        }
+
+        /// Writes a met/waived/missed DailyOutcomeStore entry per goal for
+        /// one backfilled day, derived from the exact same values just
+        /// written to the steps/gym/leetcode caches above — so the Activity
+        /// chart's bar colors and the "LAST WK" label can never disagree
+        /// about whether a given day counted.
+        ///
+        /// "Met" thresholds intentionally match what the live app itself
+        /// compares against for chart/history purposes (AppConfig's real
+        /// targets), not GymTracker's DEBUG-only 60-second check-in
+        /// shortcut — that shortcut exists purely to make manual check-in
+        /// testing fast and has nothing to do with what counts as a
+        /// completed day in history.
+        ///
+        /// On a day a goal wasn't met, randomly (30%) marks it waived
+        /// instead of missed, just so the "WAIVED" half of the label has
+        /// something to preview too. Not trying to honor the firmware's
+        /// actual weekly waive-off caps — this is preview data, not a
+        /// simulation of the real weekly ledger.
+        private static func seedDailyOutcome(for day: Date, steps: Int, gymSeconds: Double, leetTotal: Int) {
+            let waiveOffChance = 0.3
+
+            let stepsMet = steps >= AppConfig.Steps.dailyTarget
+            DailyOutcomeStore.recordOutcome(
+                goal: .steps,
+                metGoal: stepsMet,
+                waivedToday: !stepsMet && Double.random(in: 0 ... 1) < waiveOffChance,
+                date: day
+            )
+
+            let gymMinutes = gymSeconds / 60
+            let gymMet = gymMinutes >= Double(AppConfig.Gym.targetDurationMinutes)
+            DailyOutcomeStore.recordOutcome(
+                goal: .gym,
+                metGoal: gymMet,
+                waivedToday: !gymMet && Double.random(in: 0 ... 1) < waiveOffChance,
+                date: day
+            )
+
+            let leetMet = leetTotal >= AppConfig.LeetCode.dailyTargetProblems
+            DailyOutcomeStore.recordOutcome(
+                goal: .leetcode,
+                metGoal: leetMet,
+                waivedToday: !leetMet && Double.random(in: 0 ... 1) < waiveOffChance,
+                date: day
+            )
         }
 
         /// Realistic-ish daily performance: ~8% near-total miss (rest/lazy

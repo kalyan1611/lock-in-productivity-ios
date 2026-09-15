@@ -237,7 +237,7 @@ struct ActivityCard: View {
 
             Divider().overlay(Palette.surfaceStroke)
 
-            PeriodSwitcher(selection: $selectedPeriod)
+            periodSwitcherRow
 
             PagedActivityChart(
                 totalPages: totalPages,
@@ -307,7 +307,7 @@ struct ActivityCard: View {
                     VStack(alignment: .leading, spacing: 16) {
                         Divider().overlay(Palette.surfaceStroke)
 
-                        PeriodSwitcher(selection: $selectedPeriod)
+                        periodSwitcherRow
 
                         PagedActivityChart(
                             totalPages: totalPages,
@@ -468,7 +468,7 @@ struct ActivityCard: View {
 
             Divider().overlay(Palette.surfaceStroke)
 
-            PeriodSwitcher(selection: $selectedPeriod)
+            periodSwitcherRow
 
             PagedActivityChart(
                 totalPages: totalPages,
@@ -589,6 +589,62 @@ struct ActivityCard: View {
                     .foregroundStyle(Palette.neutral)
             }
         }
+    }
+
+    // MARK: - Last Week Summary (shares the PeriodSwitcher row instead of taking new vertical space)
+
+    private func goalForTab(_ tab: GoalTab) -> DailyOutcomeStore.Goal {
+        switch tab {
+        case .steps: .steps
+        case .gym: .gym
+        case .leetcode: .leetcode
+        }
+    }
+
+    /// PeriodSwitcher (WEEK/MONTH) only ever fills a fraction of this
+    /// row's width, leaving the rest blank — so the last-completed-period
+    /// summary rides along in the same row rather than adding a new one.
+    /// Follows selectedPeriod: WEEK shows the last completed Mon-Sun week,
+    /// MONTH shows the last completed calendar month. Renders nothing at
+    /// all until there's a real completed period to report (see
+    /// DailyOutcomeStore.GoalPeriodSummary.hasData), so a fresh install
+    /// just shows the plain switcher exactly as before.
+    private var periodSwitcherRow: some View {
+        let goal = goalForTab(selectedTab)
+        let summary = selectedPeriod == .week
+            ? DailyOutcomeStore.lastWeekSummary(for: goal)
+            : DailyOutcomeStore.lastMonthSummary(for: goal)
+        let prefix = selectedPeriod == .week ? "LAST WK" : "LAST MO"
+
+        return HStack {
+            PeriodSwitcher(selection: $selectedPeriod)
+            Spacer()
+            if summary.hasData {
+                lastPeriodLabel(summary, prefix: prefix)
+            }
+        }
+    }
+
+    /// Met count is colored the same green used for "goal met" everywhere
+    /// else the moment it's above zero — a 3/7 week is still three real
+    /// wins and should read that way, not as muted grey next to a loud
+    /// orange waive-off count. Waived count keeps the app's existing
+    /// waive-off color for consistency, but at reduced opacity, so it
+    /// registers as a secondary note rather than competing with (or
+    /// outshining) the met count for attention.
+    private func lastPeriodLabel(_ summary: DailyOutcomeStore.GoalPeriodSummary, prefix: String) -> some View {
+        HStack(spacing: 5) {
+            Text(prefix)
+                .foregroundStyle(Palette.textTertiary)
+            Text("\(summary.metCount)/\(summary.totalDays)")
+                .foregroundStyle(summary.metCount > 0 ? Palette.open : Palette.textSecondary)
+            if summary.waivedCount > 0 {
+                Text("· \(summary.waivedCount) WAIVED")
+                    .foregroundStyle(Palette.waived.opacity(0.75))
+            }
+        }
+        .font(.system(size: 9, weight: .bold, design: .monospaced))
+        .tracking(0.4)
     }
 
     // MARK: - Paging helpers

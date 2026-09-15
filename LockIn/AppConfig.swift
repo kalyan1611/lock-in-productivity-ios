@@ -66,6 +66,19 @@ enum AppConfig {
         static let graphqlEndpoint = "https://leetcode.com/graphql"
     }
 
+    // MARK: - Waive-Offs
+
+    enum WaiveOff {
+        /// Mirrors Config.h's GYM_WAIVEOFF_MAX (3) + STEPS_WAIVEOFF_MAX (2)
+        /// + LEETCODE_WAIVEOFF_MAX (2) — kept in sync manually, same
+        /// pattern as StepsCard's mirrored step-chunk constant. Only used
+        /// as a denominator in the weekly retrospective card ("used X of
+        /// weeklyTotal waive-offs"), so a drift here is cosmetic, not
+        /// enforcement-affecting — the ESP32 remains the source of truth
+        /// for actually granting waive-offs.
+        static let weeklyTotal: Int = 3 + 2 + 2
+    }
+
     // MARK: - UserDefaults Keys
 
     /// Every UserDefaults key in the app, in one place, so a typo becomes
