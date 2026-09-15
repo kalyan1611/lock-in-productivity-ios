@@ -163,7 +163,7 @@ struct ActivityCard: View {
     private func shareData(for tab: GoalTab) -> ShareStatData {
         switch tab {
         case .steps:
-            return ShareStatData(tab: .steps, label: "STEPS", value: "\(healthKit.todaySteps.formatted()) steps")
+            return ShareStatData(tab: .steps, label: "STEPS", value: "\(healthKit.todaySteps.formatted())")
 
         case .gym:
             let session = gymTracker.workoutSession(on: Date())
@@ -177,7 +177,7 @@ struct ActivityCard: View {
             return ShareStatData(
                 tab: .gym,
                 label: "WORKOUT",
-                value: "\(Int(gymTracker.totalSecondsToday) / 60) min",
+                value: "",
                 badge: splitTitle,
                 breakdown: breakdown
             )
