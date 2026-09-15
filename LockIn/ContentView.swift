@@ -195,18 +195,10 @@ struct ContentView: View {
 
             await leetCode.fetchTodaySolvedProblems()
 
-//            try await NetworkManager.shared.sendSync(
-//                steps: steps,
-//                gymSeconds: gymSeconds,
-//                leetCodeEasy: leetCode.easyTodayCount,
-//                leetCodeMedium: leetCode.mediumTodayCount,
-//                leetCodeHard: leetCode.hardTodayCount
-//            )
-            
             try await NetworkManager.shared.sendSync(
-                steps: 12000,
-                gymSeconds: 30000,
-                leetCodeEasy: 23,
+                steps: steps,
+                gymSeconds: gymSeconds,
+                leetCodeEasy: leetCode.easyTodayCount,
                 leetCodeMedium: leetCode.mediumTodayCount,
                 leetCodeHard: leetCode.hardTodayCount
             )
