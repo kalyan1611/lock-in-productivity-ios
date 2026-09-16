@@ -387,6 +387,13 @@ struct GateHero: View {
     /// Small slider (10m -> everything available, in 10m steps) that
     /// appears once "Claim" is tapped, so you choose exactly how much of
     /// today's earned credit to spend rather than always claiming it all.
+    ///
+    /// SwiftUI's Slider requires a strictly positive range (lowerBound <
+    /// upperBound) — when only one step is available, `claimStepMinutes`
+    /// and `availableSteppedMinutes` are equal and that range collapses to
+    /// a single point, which crashes. In that case there's nothing to
+    /// pick between anyway, so the slider is skipped entirely and the
+    /// amount is fixed at that single step.
     private var claimAmountPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -424,12 +431,14 @@ struct GateHero: View {
                 .disabled(isClaiming)
             }
 
-            Slider(
-                value: $selectedMinutes,
-                in: Double(claimStepMinutes) ... Double(max(availableSteppedMinutes, claimStepMinutes)),
-                step: Double(claimStepMinutes)
-            )
-            .tint(Palette.open)
+            if availableSteppedMinutes > claimStepMinutes {
+                Slider(
+                    value: $selectedMinutes,
+                    in: Double(claimStepMinutes) ... Double(availableSteppedMinutes),
+                    step: Double(claimStepMinutes)
+                )
+                .tint(Palette.open)
+            }
         }
         .padding(.top, 2)
     }
