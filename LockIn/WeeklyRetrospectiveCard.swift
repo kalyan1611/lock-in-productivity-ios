@@ -2,17 +2,24 @@ import SwiftUI
 
 // MARK: - Weekly Retrospective Card
 
-/// Summarizes the most recently *completed* calendar week (Monday-Sunday,
-/// matching the firmware's week boundary for waive-offs) using
-/// `DailyOutcomeStore`. Deliberately never shows the current, in-progress
-/// week — comparing a partial week against a full one is misleading, and
-/// today's live state is already visible everywhere else in the app (see
-/// `GateHero`, `ActivityCard`). This card only answers "how did last week
-/// go," and only once there's a real answer to give.
+/// Summarizes the most recently *completed* calendar week (Monday-Sunday)
+/// using `DailyOutcomeStore`. Deliberately never shows the current,
+/// in-progress week — comparing a partial week against a full one is
+/// misleading, and today's live state is already visible everywhere else
+/// in the app (see `ActivityCard`). This card only answers "how did last
+/// week go," and only once there's a real answer to give.
 ///
 /// No streaks, no fire emojis, no comparison to other weeks beyond the
 /// plain numbers — this is meant to read as a quiet, honest status check,
 /// not a gamified nudge.
+///
+/// Not currently instantiated anywhere in ContentView — ActivityCard's own
+/// inline "LAST WK / LAST MO" row (see `periodSwitcherRow`) now covers the
+/// same aggregate summary from `DailyOutcomeStore.lastWeekSummary`. This
+/// card still does something that one doesn't: a full day-by-day dot grid
+/// per goal. Left in the tree pending a decision on whether to wire it in
+/// alongside the inline summary or retire it — not deleted outright since
+/// that's a product call, not a cleanup call.
 struct WeeklyRetrospectiveCard: View {
     private struct DayOutcomes {
         let date: Date
@@ -32,12 +39,11 @@ struct WeeklyRetrospectiveCard: View {
     // MARK: - Week Computation
 
     /// The seven days of the most recently completed Mon-Sun week, oldest
-    /// first. Mirrors dns_filter's `getMondayDateString()` week boundary
+    /// first. Mirrors DailyOutcomeStore.lastWeekSummary's week boundary
     /// exactly (tm_wday 0 = Sun ... 6 = Sat, daysSinceMonday = wday == 0 ?
-    /// 6 : wday - 1) so "last week" here means the same calendar week the
-    /// ESP32 resets waive-offs on — Calendar's `weekday` is tm_wday + 1,
-    /// so the same rule becomes `weekday - 2`, with Sunday (weekday == 1)
-    /// special-cased to 6.
+    /// 6 : wday - 1 — Calendar's `weekday` is tm_wday + 1, so the same rule
+    /// becomes `weekday - 2`, with Sunday special-cased to 6) so both stay
+    /// on the same week grid.
     private var lastWeekDays: [DayOutcomes] {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())

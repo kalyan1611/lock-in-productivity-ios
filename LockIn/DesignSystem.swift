@@ -3,12 +3,12 @@ import SwiftUI
 // MARK: - Design Tokens
 
 //
-// LockIn's whole premise is a physical gate that only opens when the day's
-// goals are met, so the UI leans into that: a dark "control panel" surface,
-// one accent color that means "open" and one that means "restricted," and a
-// ring motif — each goal closes its own ring, the hero dial is the sum of
-// them. Nothing here is decorative; every ring, dot, and capsule reports a
-// real piece of state from GymTracker / HealthKitManager / NetworkManager.
+// LockIn tracks three daily goals, so the UI leans into that: a dark
+// "control panel" surface, one accent color that means "goal met" and one
+// that means "missed," and a ring/progress motif — each goal fills its own
+// bar, ActivityCard is the summary of them. Nothing here is decorative;
+// every ring, dot, and capsule reports a real piece of state from
+// GymTracker / HealthKitManager / LeetCodeManager / WaiveOffManager.
 
 extension Color {
     init(hex: UInt, alpha: Double = 1) {
@@ -60,8 +60,8 @@ enum Typography {
 // Grey: not started. Blue: started, not yet complete. Green: goal met.
 // Orange: a waive-off covered the day instead. `isCompleted` wins over
 // `waived` since actually meeting the goal outranks skipping it.
-// Shared by StepsCard, GymCard, and LeetCodeCard so the mapping only
-// lives in one place.
+// Shared by ActivityCard and the legacy StepsCard/GymCard/LeetCodeCard so
+// the mapping only lives in one place.
 enum GoalColor {
     static func forProgress(_ progress: Double, isCompleted: Bool, waived: Bool) -> Color {
         if isCompleted {
@@ -75,19 +75,4 @@ enum GoalColor {
         }
         return Palette.neutral
     }
-}
-
-// MARK: - Shared minute formatting
-
-/// "1h 5m" / "1h" / "45m" — used by GateHero's credit row and label.
-func formatMinutes(_ minutes: Int) -> String {
-    let h = minutes / 60
-    let m = minutes % 60
-    if h > 0, m > 0 {
-        return "\(h)h \(m)m"
-    }
-    if h > 0 {
-        return "\(h)h"
-    }
-    return "\(m)m"
 }

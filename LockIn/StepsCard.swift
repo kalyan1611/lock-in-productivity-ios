@@ -1,26 +1,14 @@
 import SwiftUI
 
+/// Legacy standalone card — superseded by ActivityCard's Steps tab and not
+/// currently instantiated anywhere in ContentView. Left in the tree in case
+/// it's still wanted for something; not deleted outright since that's a
+/// product call, not a cleanup call.
 struct StepsCard: View {
     @ObservedObject var healthKit: HealthKitManager
     let waived: Bool
     let waiveRemaining: Int?
     let onTapWaiveOff: () -> Void
-
-    /// Mirrors the firmware's STEPS_PER_CREDIT_CHUNK (1000 steps = +10m,
-    /// capped at the daily target) — kept in sync manually with
-    /// dns_filter.ino's tieredMinutesFromProgress(). Computed locally from
-    /// HealthKit data the app already has, rather than round-tripping
-    /// through the ESP32, so it's live rather than only as fresh as the
-    /// last /sync.
-    private var stepsUntilNextChunk: Int? {
-        let chunk = 1000
-        let steps = healthKit.todaySteps
-        let target = healthKit.targetSteps
-        guard steps < target else { return nil }
-        let nextThreshold = min(((steps / chunk) + 1) * chunk, target)
-        let remaining = nextThreshold - steps
-        return remaining > 0 ? remaining : nil
-    }
 
     var body: some View {
         let isCompleted = healthKit.areTodaysStepsCompleted
@@ -45,11 +33,6 @@ struct StepsCard: View {
                 Text("of \(healthKit.targetSteps) steps")
                     .font(.caption)
                     .foregroundStyle(Palette.textSecondary)
-                if let remaining = stepsUntilNextChunk, remaining > 0 {
-                    Text("\(remaining) to next +10m")
-                        .font(.caption2)
-                        .foregroundStyle(Palette.neutral)
-                }
             }
         } footer: {
             EmptyView()

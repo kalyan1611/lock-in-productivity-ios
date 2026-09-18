@@ -5,31 +5,6 @@ import Foundation
 /// (a device, a service, a physical location) or that represents a
 /// tunable daily goal. Nothing behavioral lives here — just values.
 enum AppConfig {
-    // MARK: - ESP32 Gate Controller
-
-    enum Gate {
-        /// LAN address of the ESP32. Update here if DHCP reassigns it,
-        /// or move to a UserDefaults-backed override if it changes often.
-        static let baseURL = "http://192.168.1.14"
-
-        /// Fallback key used only if no override is saved in UserDefaults
-        /// under `esp32APIKeyDefaultsKey`. Treat as a placeholder, not a secret.
-        static let defaultAPIKey = "n6i8pBuDSSknFddjiHnTkZq8ptSjJmVPQpDra0K6qu8pj2C6NTheNHl27AdRM1O0"
-
-        static let statusPath = "/status"
-        static let syncPath = "/sync"
-        static let claimPath = "/claim"
-        static let waiveoffStatusPath = "/waiveoff/status"
-        static let waiveoffPath = "/waiveoff"
-
-        static let requestTimeout: TimeInterval = 4
-
-        enum Method {
-            static let get = "GET"
-            static let post = "POST"
-        }
-    }
-
     // MARK: - Gym
 
     enum Gym {
@@ -68,15 +43,17 @@ enum AppConfig {
 
     // MARK: - Waive-Offs
 
+    /// Limited weekly allowance per goal that lets a day count as handled
+    /// without actually meeting the goal — tracked entirely on-device by
+    /// WaiveOffManager now that there's no gate device to be the source of
+    /// truth. Per-goal limits live here (not duplicated in WaiveOffManager)
+    /// so WeeklyRetrospectiveCard's "X of weeklyTotal waived" denominator
+    /// can never drift out of sync with what actually gets granted.
     enum WaiveOff {
-        /// Mirrors Config.h's GYM_WAIVEOFF_MAX (3) + STEPS_WAIVEOFF_MAX (2)
-        /// + LEETCODE_WAIVEOFF_MAX (2) — kept in sync manually, same
-        /// pattern as StepsCard's mirrored step-chunk constant. Only used
-        /// as a denominator in the weekly retrospective card ("used X of
-        /// weeklyTotal waive-offs"), so a drift here is cosmetic, not
-        /// enforcement-affecting — the ESP32 remains the source of truth
-        /// for actually granting waive-offs.
-        static let weeklyTotal: Int = 3 + 2 + 2
+        static let gym = 3
+        static let steps = 2
+        static let leetcode = 2
+        static let weeklyTotal: Int = gym + steps + leetcode
     }
 
     // MARK: - UserDefaults Keys
@@ -84,7 +61,6 @@ enum AppConfig {
     /// Every UserDefaults key in the app, in one place, so a typo becomes
     /// a compile error instead of a silent read-miss.
     enum DefaultsKey {
-        static let esp32APIKeyOverride = "esp32APIKey"
         static let leetcodeUsername = "leetcodeUsername"
 
         static let gymSecondsPrefix = "LockIn_GymSeconds_"
@@ -119,10 +95,11 @@ enum AppConfig {
         static let leetcodeMediumSuffix = "medium_"
         static let leetcodeHardSuffix = "hard_"
 
-        /// Last-known waive-off status, cached so the UI has something
-        /// sane to show before the first successful fetch of a session
-        /// and while offline.
-        static let waiveOffStatusCache = "LockIn_WaiveOffStatusCache"
+        /// UserDefaults-backed record of this week's waive-off usage (see
+        /// WaiveOffManager) — how many of each goal's weekly allowance has
+        /// been used, and which date (if any) each goal was last waived on.
+        /// Rolls over automatically once the calendar week advances.
+        static let waiveOffState = "LockIn_WaiveOffState"
 
         #if DEBUG
             /// Keychain (not UserDefaults, despite living in this "keys" enum

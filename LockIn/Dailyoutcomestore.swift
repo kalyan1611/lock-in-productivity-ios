@@ -5,10 +5,9 @@ import Foundation
 /// One of three states a single goal lands in for a single calendar day.
 /// Persisted per goal per day so a later "last week" retrospective can
 /// distinguish "hit it for real" from "used a waive-off" from "missed it"
-/// — a distinction that's otherwise lost by end of day: the ESP32 only
-/// tracks the *current* waived date per goal (overwritten, no history),
-/// and NetworkManager's waive-off cache explicitly zeroes out the waived
-/// flags once the cache is from a prior day.
+/// — a distinction that's otherwise lost by end of day, since WaiveOffManager
+/// only tracks the *current* week's waived date per goal (overwritten once a
+/// new week starts, no history).
 enum GoalOutcome: String, Codable {
     case met
     case waived
@@ -19,7 +18,7 @@ enum GoalOutcome: String, Codable {
 /// per calendar day. Like GymTracker's / LeetCodeManager's history
 /// caches, this only starts accumulating from whenever it first ships —
 /// there's no way to reconstruct outcomes for days before that, since the
-/// waive-off info in particular is already gone by the next day.
+/// waive-off info in particular is already gone by the next week.
 ///
 /// An entry for a given date is only ever written while that date is
 /// "today" — `recordOutcome` is meant to be called once per successful
@@ -131,10 +130,9 @@ enum DailyOutcomeStore {
     }
 
     /// True only if all three goals for that date resolved to `.met` —
-    /// mirrors the firmware's `goalsFullyMet()` semantics (waive-offs
-    /// unlock the day but don't count as "fully met" here), so a
-    /// retrospective's day-level rollup stays consistent with how the
-    /// gate itself decided things that day.
+    /// a day's rollup that stays consistent with how each goal's own
+    /// completion flag decided things that day (waive-offs unlock the day
+    /// but don't count as "fully met" here).
     static func allGoalsMet(for date: Date) -> Bool {
         [Goal.steps, .gym, .leetcode].allSatisfy { outcome(goal: $0, date: date) == .met }
     }
@@ -161,12 +159,12 @@ enum DailyOutcomeStore {
     /// week, since a partial week isn't comparable to a full one and
     /// today's live state is already shown elsewhere in the app.
     ///
-    /// Week boundary mirrors dns_filter's `getMondayDateString()` exactly
-    /// (tm_wday 0 = Sun ... 6 = Sat, daysSinceMonday = wday == 0 ? 6 :
-    /// wday - 1), so "last week" here means the same calendar week the
-    /// ESP32 resets waive-offs on. Calendar's `weekday` is tm_wday + 1, so
-    /// the same rule becomes `weekday - 2`, with Sunday (weekday == 1)
-    /// special-cased to 6.
+    /// Week boundary mirrors the firmware's original `getMondayDateString()`
+    /// exactly (tm_wday 0 = Sun ... 6 = Sat, daysSinceMonday = wday == 0 ?
+    /// 6 : wday - 1) so this stays on the same Monday-based week grid
+    /// WaiveOffManager's weekly allowance also resets on. Calendar's
+    /// `weekday` is tm_wday + 1, so the same rule becomes `weekday - 2`,
+    /// with Sunday (weekday == 1) special-cased to 6.
     static func lastWeekSummary(
         for goal: Goal,
         referenceDate: Date = Date(),

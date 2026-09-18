@@ -1,5 +1,9 @@
 import SwiftUI
 
+/// Legacy standalone card — superseded by ActivityCard's LeetCode tab and
+/// not currently instantiated anywhere in ContentView. Left in the tree in
+/// case it's still wanted for something; not deleted outright since that's
+/// a product call, not a cleanup call.
 struct LeetCodeCard: View {
     @ObservedObject var leetCode: LeetCodeManager
     let waived: Bool
@@ -41,15 +45,15 @@ struct LeetCodeCard: View {
 
     private var difficultyBreakdown: some View {
         HStack(spacing: 0) {
-            difficultyColumn(label: "EASY", count: leetCode.easyTodayCount, creditLabel: "+5m", color: Palette.open)
+            difficultyColumn(label: "EASY", count: leetCode.easyTodayCount, color: Palette.open)
             Divider().overlay(Palette.surfaceStroke).frame(height: 20)
-            difficultyColumn(label: "MEDIUM", count: leetCode.mediumTodayCount, creditLabel: "+10m", color: Palette.waived)
+            difficultyColumn(label: "MEDIUM", count: leetCode.mediumTodayCount, color: Palette.waived)
             Divider().overlay(Palette.surfaceStroke).frame(height: 20)
-            difficultyColumn(label: "HARD", count: leetCode.hardTodayCount, creditLabel: "+15m", color: Palette.locked)
+            difficultyColumn(label: "HARD", count: leetCode.hardTodayCount, color: Palette.locked)
         }
     }
 
-    private func difficultyColumn(label: String, count: Int, creditLabel: String, color: Color) -> some View {
+    private func difficultyColumn(label: String, count: Int, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(label)
                 .font(.caption2.weight(.bold))
@@ -57,9 +61,6 @@ struct LeetCodeCard: View {
             Text("\(count)")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(Palette.textPrimary)
-            Text(creditLabel)
-                .font(.system(size: 9))
-                .foregroundStyle(Palette.textSecondary)
         }
         .frame(maxWidth: .infinity)
     }

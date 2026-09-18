@@ -8,8 +8,8 @@ struct ActivityCard: View {
     @ObservedObject var gymTracker: GymTracker
     @ObservedObject var leetCode: LeetCodeManager
 
-    let waiveOffStatus: NetworkManager.WaiveOffStatus?
-    let onTapWaiveOff: (NetworkManager.WaiveOffType) -> Void
+    let waiveOffStatus: WaiveOffManager.WaiveOffStatus?
+    let onTapWaiveOff: (WaiveOffManager.WaiveOffType) -> Void
 
     /// +1 when the most recent tab change moved rightward through
     /// GoalTab.allCases (Steps → Gym → LeetCode), -1 when it moved
@@ -151,11 +151,9 @@ struct ActivityCard: View {
         .buttonStyle(.plain)
     }
 
-    /// Same value/unit/progress/isCompleted/waived/creditNote each tab's
-    /// `todayStat(...)` call already computes — factored out here so the
-    /// share card can never show numbers that disagree with what's on
-    /// screen right now.
-    /// Just what was actually done, not the target — see ShareStatData.
+    /// Same value/unit/progress/isCompleted/waived each tab's `todayStat(...)`
+    /// call already computes — factored out here so the share card can
+    /// never show numbers that disagree with what's on screen right now.
     /// Just what was actually done, not the target — see ShareStatData.
     /// Gym additionally surfaces the actual workout: the persisted session
     /// if checked out today, or the live in-progress log while still
@@ -205,23 +203,6 @@ struct ActivityCard: View {
 
     // MARK: - Steps
 
-    // stepsUntilNextChunk mirrors the firmware's STEPS_PER_CREDIT_CHUNK
-    // (1000 steps = +10m, capped at the daily target) — kept in sync
-    // manually with dns_filter.ino's tieredMinutesFromProgress(). Computed
-    // locally from HealthKit data the app already has, rather than
-    // round-tripping through the ESP32, so it's live rather than only as
-    // fresh as the last /sync.
-
-    private var stepsUntilNextChunk: Int? {
-        let chunk = 1000
-        let steps = healthKit.todaySteps
-        let target = healthKit.targetSteps
-        guard steps < target else { return nil }
-        let nextThreshold = min(((steps / chunk) + 1) * chunk, target)
-        let remaining = nextThreshold - steps
-        return remaining > 0 ? remaining : nil
-    }
-
     private var stepsContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             todayStat(
@@ -230,8 +211,7 @@ struct ActivityCard: View {
                 progress: healthKit.targetSteps > 0
                     ? Double(healthKit.todaySteps) / Double(healthKit.targetSteps) : 0,
                 isCompleted: healthKit.areTodaysStepsCompleted,
-                waived: waiveOffStatus?.stepsWaivedToday ?? false,
-                creditNote: stepsUntilNextChunk.map { "\($0) to next +10m" }
+                waived: waiveOffStatus?.stepsWaivedToday ?? false
             )
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -288,8 +268,7 @@ struct ActivityCard: View {
                 progress: gymTracker.targetGymDurationSeconds > 0
                     ? gymTracker.totalSecondsToday / gymTracker.targetGymDurationSeconds : 0,
                 isCompleted: gymTracker.isGymSessionCompleted,
-                waived: waiveOffStatus?.gymWaivedToday ?? false,
-                creditNote: gymTracker.isGymSessionCompleted ? nil : "Full session: +\(gymTracker.targetGymDurationMinutes)m"
+                waived: waiveOffStatus?.gymWaivedToday ?? false
             )
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -515,15 +494,15 @@ struct ActivityCard: View {
 
     private var difficultyBreakdown: some View {
         HStack(spacing: 0) {
-            difficultyColumn(label: "EASY", count: leetCode.easyTodayCount, creditLabel: "+5m", color: Palette.open)
+            difficultyColumn(label: "EASY", count: leetCode.easyTodayCount, color: Palette.open)
             Divider().overlay(Palette.surfaceStroke).frame(height: 20)
-            difficultyColumn(label: "MEDIUM", count: leetCode.mediumTodayCount, creditLabel: "+10m", color: Palette.waived)
+            difficultyColumn(label: "MEDIUM", count: leetCode.mediumTodayCount, color: Palette.waived)
             Divider().overlay(Palette.surfaceStroke).frame(height: 20)
-            difficultyColumn(label: "HARD", count: leetCode.hardTodayCount, creditLabel: "+15m", color: Palette.locked)
+            difficultyColumn(label: "HARD", count: leetCode.hardTodayCount, color: Palette.locked)
         }
     }
 
-    private func difficultyColumn(label: String, count: Int, creditLabel: String, color: Color) -> some View {
+    private func difficultyColumn(label: String, count: Int, color: Color) -> some View {
         VStack(spacing: 2) {
             Text(label)
                 .font(.caption2.weight(.bold))
@@ -531,9 +510,6 @@ struct ActivityCard: View {
             Text("\(count)")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(Palette.textPrimary)
-            Text(creditLabel)
-                .font(.system(size: 9))
-                .foregroundStyle(Palette.textSecondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -542,9 +518,7 @@ struct ActivityCard: View {
 
     // Horizontal progress bar replaces the old ring+icon combo — the icon
     // duplicated what GoalTabSwitcher already shows, so it's dropped
-    // entirely rather than relocated. creditNote restores the per-tab
-    // "what do I earn" line that existed pre-revamp (StepsCard's chunked
-    // "+10m per 1000 steps", GymCard's flat "Full session: +45m").
+    // entirely rather than relocated.
 
     /// "Wed, Feb 12" — used by each tab's SelectedBarDetail row.
     private func fullDateLabel(_ date: Date) -> String {
@@ -558,8 +532,7 @@ struct ActivityCard: View {
         unit: String,
         progress: Double,
         isCompleted: Bool,
-        waived: Bool,
-        creditNote: String? = nil
+        waived: Bool
     ) -> some View {
         let color = GoalColor.forProgress(progress, isCompleted: isCompleted, waived: waived)
         return VStack(alignment: .leading, spacing: 8) {
@@ -582,12 +555,6 @@ struct ActivityCard: View {
                 }
             }
             .frame(height: 8)
-
-            if let creditNote {
-                Text(creditNote)
-                    .font(.caption2)
-                    .foregroundStyle(Palette.neutral)
-            }
         }
     }
 

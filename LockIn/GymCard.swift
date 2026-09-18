@@ -1,5 +1,9 @@
 import SwiftUI
 
+/// Legacy standalone card — superseded by ActivityCard's Gym tab and not
+/// currently instantiated anywhere in ContentView. Left in the tree in case
+/// it's still wanted for something; not deleted outright since that's a
+/// product call, not a cleanup call.
 struct GymCard: View {
     @ObservedObject var gymTracker: GymTracker
     let waived: Bool
@@ -30,11 +34,6 @@ struct GymCard: View {
                 Text("of \(gymTracker.targetGymDurationMinutes) min target")
                     .font(.caption)
                     .foregroundStyle(Palette.textSecondary)
-                if !isCompleted {
-                    Text("Full session: +45m")
-                        .font(.caption2)
-                        .foregroundStyle(Palette.neutral)
-                }
             }
         } footer: {
             gymActionButton
