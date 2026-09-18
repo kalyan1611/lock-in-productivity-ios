@@ -13,7 +13,7 @@ enum GoalTab: String, CaseIterable {
         }
     }
 
-    var waiveOffType: NetworkManager.WaiveOffType {
+    var waiveOffType: WaiveOffManager.WaiveOffType {
         switch self {
         case .steps: .steps
         case .gym: .gym

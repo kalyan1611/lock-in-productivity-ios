@@ -80,10 +80,9 @@ struct GoalCardShell<Content: View, Footer: View>: View {
 
 // MARK: - Ticket Badge
 
-// Same recipe as GateHero's `onlinePill` and `claimButton` — translucent
-// dark fill + a 1pt stroke in the semantic color, rather than a solid
-// filled chip. "ticket" reads as "redeem for a skip" more directly than
-// a plain X or calendar icon would.
+// Translucent dark fill + a 1pt stroke in the semantic color, rather
+// than a solid filled chip. "ticket" reads as "redeem for a skip" more
+// directly than a plain X or calendar icon would.
 
 struct TicketBadge: View {
     let remaining: Int
