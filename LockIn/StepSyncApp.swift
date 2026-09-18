@@ -20,15 +20,16 @@ struct StepSyncApp: App {
             ContentView()
                 .task {
                     #if DEBUG
-                        // No HealthKit authorization and no LeetCode network
-                        // call needed here — ContentView's own refresh()
-                        // picks up the seeded data through the already
-                        // debug-branched manager methods.
+                        // No HealthKit authorization, no LeetCode network call.
+                        // ContentView's own refresh() picks up the seeded data
+                        // through the now-branched manager methods.
+                        await NetworkManager.shared.checkStatus()
                     #else
                         do {
                             try await HealthKitManager.shared.requestAuthorization()
                             HealthKitManager.shared.enableBackgroundDelivery()
                             await HealthKitManager.shared.syncSteps()
+                            await NetworkManager.shared.checkStatus()
                         } catch {
                             print("Startup error: \(error)")
                         }

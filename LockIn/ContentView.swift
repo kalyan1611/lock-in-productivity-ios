@@ -2,14 +2,16 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var healthKit = HealthKitManager.shared
-    @StateObject private var waiveOffManager = WaiveOffManager.shared
+    @StateObject private var network = NetworkManager.shared
     @StateObject private var leetCode = LeetCodeManager.shared
     @ObservedObject private var gymTracker = GymTracker.shared
 
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var waiveOffAlertType: WaiveOffManager.WaiveOffType?
+    @State private var lastSyncStatus: String = ""
+    @State private var waiveOffAlertType: NetworkManager.WaiveOffType?
     @State private var waiveOffError: String?
+    @State private var isClaiming = false
     @State private var selectedTab: GoalTab = .steps
     @State private var selectedPeriod: StatsPeriod = .week
 
@@ -17,23 +19,39 @@ struct ContentView: View {
         NavigationStack {
             GeometryReader { geo in
                 ScrollView {
-                    ActivityCard(
-                        selectedTab: $selectedTab,
-                        selectedPeriod: $selectedPeriod,
-                        healthKit: healthKit,
-                        gymTracker: gymTracker,
-                        leetCode: leetCode,
-                        waiveOffStatus: waiveOffManager.waiveOffStatus,
-                        onTapWaiveOff: { waiveOffAlertType = $0 }
-                    )
+                    VStack(spacing: 12) {
+                        ActivityCard(
+                            selectedTab: $selectedTab,
+                            selectedPeriod: $selectedPeriod,
+                            healthKit: healthKit,
+                            gymTracker: gymTracker,
+                            leetCode: leetCode,
+                            waiveOffStatus: network.waiveOffStatus,
+                            onTapWaiveOff: { waiveOffAlertType = $0 }
+                        )
+
+                        GateHero(
+                            isOpen: network.isGateOpen,
+                            deviceOnline: network.connectionStatus == .online,
+                            errorMessage: networkErrorMessage,
+                            goalsFullyMet: network.goalsFullyMet,
+                            availableToClaimMinutes: network.availableToClaimMinutes,
+                            remainingMinutes: network.remainingMinutesToday,
+                            stepsWaivedToday: network.waiveOffStatus?.stepsWaivedToday ?? false,
+                            gymWaivedToday: network.waiveOffStatus?.gymWaivedToday ?? false,
+                            leetcodeWaivedToday: network.waiveOffStatus?.leetcodeWaivedToday ?? false,
+                            isClaiming: isClaiming,
+                            onClaim: { minutes in await claimCredit(minutes: minutes) }
+                        )
+                    }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     // Pins content to at least the full available height so
-                    // it fills the screen exactly like before — now with a
-                    // single card instead of two. Wrapping in ScrollView at
-                    // all is only here so .refreshable has something to
-                    // attach to; a bare view can't support pull-to-refresh.
-                    // On a screen too short for the card's minimum content,
+                    // nothing scrolls during normal use — the two cards fill
+                    // the screen exactly like before. Wrapping in ScrollView
+                    // at all is only here so .refreshable has something to
+                    // attach to; a bare VStack can't support pull-to-refresh.
+                    // On a screen too short for both cards' minimum content,
                     // this also degrades gracefully into an actual scroll
                     // instead of clipping.
                     .frame(minHeight: geo.size.height)
@@ -105,17 +123,32 @@ struct ContentView: View {
 
     private func confirmWaiveOff() {
         guard let type = waiveOffAlertType else { return }
-        do {
-            try waiveOffManager.useWaiveOff(type)
-        } catch {
-            waiveOffError = error.localizedDescription
+        Task {
+            do {
+                try await network.useWaiveOff(type)
+            } catch {
+                waiveOffError = error.localizedDescription
+            }
+            waiveOffAlertType = nil
         }
-        waiveOffAlertType = nil
+    }
+
+    private var networkErrorMessage: String? {
+        if !lastSyncStatus.isEmpty {
+            return lastSyncStatus
+        }
+        if network.waiveOffStatus == nil, let waiveOffError = network.waiveOffFetchError {
+            return waiveOffError
+        }
+        if let leetCodeError = leetCode.errorMessage {
+            return leetCodeError
+        }
+        return nil
     }
 
     // MARK: - Waive-off alert message
 
-    private func waiveOffProgressPercent(for type: WaiveOffManager.WaiveOffType) -> Int {
+    private func waiveOffProgressPercent(for type: NetworkManager.WaiveOffType) -> Int {
         let fraction: Double = switch type {
         case .steps:
             healthKit.targetSteps > 0
@@ -133,7 +166,7 @@ struct ContentView: View {
         return min(max(Int((fraction * 100).rounded(.down)), 0), 100)
     }
 
-    private func waiveOffAlertMessage(for type: WaiveOffManager.WaiveOffType?) -> String {
+    private func waiveOffAlertMessage(for type: NetworkManager.WaiveOffType?) -> String {
         let baseMessage = "This uses one of your limited weekly waive-off cards for today."
         guard let type else { return baseMessage }
 
@@ -146,40 +179,70 @@ struct ContentView: View {
     // MARK: - Sync
 
     private func refresh() async {
-        gymTracker.checkDailyCheckoutStatus()
-        gymTracker.refreshLocation()
+        lastSyncStatus = ""
 
-        await healthKit.syncSteps()
+        do {
+            gymTracker.checkDailyCheckoutStatus()
 
-        gymTracker.loadTodayAccumulatedTime()
+            gymTracker.refreshLocation()
+            await network.checkStatus()
 
-        await leetCode.fetchTodaySolvedProblems()
+            await healthKit.syncSteps()
+            let steps = healthKit.todaySteps
 
-        waiveOffManager.refresh()
+            gymTracker.loadTodayAccumulatedTime()
+            let gymSeconds = Int(gymTracker.totalSecondsToday)
 
-        // Log today's outcome per goal for the (future) weekly
-        // retrospective. Computed from the same locally-known values the
-        // goal cards themselves already use (HealthKit / GymTracker /
-        // LeetCodeManager completion flags + WaiveOffManager's local
-        // state) — there's no ESP32 response to defer to anymore, so this
-        // is now the only source of truth for "did I hit today's goals."
-        // Safe to call every refresh — see DailyOutcomeStore's doc
-        // comment.
-        DailyOutcomeStore.recordOutcome(
-            goal: .steps,
-            metGoal: healthKit.areTodaysStepsCompleted,
-            waivedToday: waiveOffManager.waiveOffStatus?.stepsWaivedToday ?? false
-        )
-        DailyOutcomeStore.recordOutcome(
-            goal: .gym,
-            metGoal: gymTracker.isGymSessionCompleted,
-            waivedToday: waiveOffManager.waiveOffStatus?.gymWaivedToday ?? false
-        )
-        DailyOutcomeStore.recordOutcome(
-            goal: .leetcode,
-            metGoal: leetCode.isGoalMet,
-            waivedToday: waiveOffManager.waiveOffStatus?.leetcodeWaivedToday ?? false
-        )
+            await leetCode.fetchTodaySolvedProblems()
+
+            try await NetworkManager.shared.sendSync(
+                steps: 11000,
+                gymSeconds: 30000,
+                leetCodeEasy: 12,
+                leetCodeMedium: leetCode.mediumTodayCount,
+                leetCodeHard: leetCode.hardTodayCount
+            )
+
+            await network.fetchWaiveOffStatus()
+
+            // Log today's outcome per goal for the (future) weekly
+            // retrospective. Deliberately computed from the same
+            // locally-known values the goal cards themselves already use
+            // (HealthKit / GymTracker / LeetCodeManager completion flags +
+            // the freshly-fetched waive-off status) rather than from the
+            // ESP32's response, so this stays accurate regardless of
+            // whatever /sync is being fed above. Safe to call every
+            // refresh — see DailyOutcomeStore's doc comment.
+            DailyOutcomeStore.recordOutcome(
+                goal: .steps,
+                metGoal: healthKit.areTodaysStepsCompleted,
+                waivedToday: network.waiveOffStatus?.stepsWaivedToday ?? false
+            )
+            DailyOutcomeStore.recordOutcome(
+                goal: .gym,
+                metGoal: gymTracker.isGymSessionCompleted,
+                waivedToday: network.waiveOffStatus?.gymWaivedToday ?? false
+            )
+            DailyOutcomeStore.recordOutcome(
+                goal: .leetcode,
+                metGoal: leetCode.isGoalMet,
+                waivedToday: network.waiveOffStatus?.leetcodeWaivedToday ?? false
+            )
+        } catch {
+            print("sendSync failed: \(error)")
+            lastSyncStatus = "Couldn't reach your gate device — \(error.localizedDescription)"
+        }
+    }
+
+    private func claimCredit(minutes: Int) async {
+        guard !isClaiming else { return }
+        isClaiming = true
+        defer { isClaiming = false }
+        do {
+            try await NetworkManager.shared.claim(minutes: minutes)
+        } catch {
+            lastSyncStatus = "Couldn't claim credit — \(error.localizedDescription)"
+        }
     }
 }
 

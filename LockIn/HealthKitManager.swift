@@ -169,7 +169,7 @@ final class HealthKitManager: ObservableObject {
         }
     }
 
-    /// Fetch latest step count for today.
+    /// Fetch latest step count and push all metrics to ESP32.
     @MainActor
     func syncSteps() async {
         do {

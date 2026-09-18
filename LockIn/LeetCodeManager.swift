@@ -17,7 +17,7 @@ final class LeetCodeManager: ObservableObject {
 
     @AppStorage(AppConfig.DefaultsKey.leetcodeUsername) var username: String = AppConfig.LeetCode.defaultUsername
 
-    // MARK: - Daily Target
+    // MARK: - Gate Target
 
     let targetProblems: Int = AppConfig.LeetCode.dailyTargetProblems
 
@@ -92,9 +92,9 @@ final class LeetCodeManager: ObservableObject {
     private func recordTodayCount() {
         let today = Date()
         // Keychain, not UserDefaults — see PersistentStore.swift. This is
-        // the only local record of LeetCode's daily history (the public
-        // API has no backdated calendar), so losing it on reinstall would
-        // be permanent.
+        // the only local record of LeetCode's daily history (the public API
+        // has no backdated calendar), so losing it on reinstall would be
+        // permanent, unlike ESP32-tracked state which lives on the router.
         KeychainStore.setInt(totalTodayCount, forKey: dailyCountKeyPrefix + dateString(today))
         KeychainStore.setInt(easyTodayCount, forKey: easyKey(today))
         KeychainStore.setInt(mediumTodayCount, forKey: mediumKey(today))

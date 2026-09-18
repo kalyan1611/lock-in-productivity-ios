@@ -3,12 +3,12 @@ import SwiftUI
 // MARK: - Design Tokens
 
 //
-// LockIn tracks the same three daily goals it always has — steps, gym,
-// LeetCode — just without a physical gate enforcing them anymore, so the
-// UI leans on a dark "control panel" surface with one accent color that
-// means "goal met" and one that means "not yet." Nothing here is
-// decorative; every ring, dot, and capsule reports a real piece of state
-// from GymTracker / HealthKitManager / LeetCodeManager / WaiveOffManager.
+// LockIn's whole premise is a physical gate that only opens when the day's
+// goals are met, so the UI leans into that: a dark "control panel" surface,
+// one accent color that means "open" and one that means "restricted," and a
+// ring motif — each goal closes its own ring, the hero dial is the sum of
+// them. Nothing here is decorative; every ring, dot, and capsule reports a
+// real piece of state from GymTracker / HealthKitManager / NetworkManager.
 
 extension Color {
     init(hex: UInt, alpha: Double = 1) {
@@ -38,9 +38,9 @@ enum Palette {
 
     // MARK: - Semantic
 
-    static let open = Color(hex: 0x55E6A5) // Goal met
+    static let open = Color(hex: 0x55E6A5) // Goal met / unlocked
     static let started = Color(hex: 0x4F8FEF) // In progress
-    static let locked = Color(hex: 0xFF5C5C) // Hard / needs attention
+    static let locked = Color(hex: 0xFF5C5C) // Restricted
     static let waived = Color(hex: 0xE7A94B) // Waive-off used
     static let neutral = Color(hex: 0x4B525A) // Not started / inactive
 }
@@ -60,6 +60,8 @@ enum Typography {
 // Grey: not started. Blue: started, not yet complete. Green: goal met.
 // Orange: a waive-off covered the day instead. `isCompleted` wins over
 // `waived` since actually meeting the goal outranks skipping it.
+// Shared by StepsCard, GymCard, and LeetCodeCard so the mapping only
+// lives in one place.
 enum GoalColor {
     static func forProgress(_ progress: Double, isCompleted: Bool, waived: Bool) -> Color {
         if isCompleted {
@@ -73,4 +75,19 @@ enum GoalColor {
         }
         return Palette.neutral
     }
+}
+
+// MARK: - Shared minute formatting
+
+/// "1h 5m" / "1h" / "45m" — used by GateHero's credit row and label.
+func formatMinutes(_ minutes: Int) -> String {
+    let h = minutes / 60
+    let m = minutes % 60
+    if h > 0, m > 0 {
+        return "\(h)h \(m)m"
+    }
+    if h > 0 {
+        return "\(h)h"
+    }
+    return "\(m)m"
 }
