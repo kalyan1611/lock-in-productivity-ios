@@ -10,7 +10,7 @@ enum AppConfig {
     enum Gate {
         /// LAN address of the ESP32. Update here if DHCP reassigns it,
         /// or move to a UserDefaults-backed override if it changes often.
-        static let baseURL = "http://192.168.0.250"
+        static let baseURL = "http://192.168.0.8"
 
         /// Fallback key used only if no override is saved in UserDefaults
         /// under `esp32APIKeyDefaultsKey`. Treat as a placeholder, not a secret.
